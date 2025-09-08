@@ -1,0 +1,97 @@
+services:
+  # InfluxDB 2.x for time series data storage
+  influxdb:
+    image: influxdb:2.7
+    container_name: lcw-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=changeme123
+      - DOCKER_INFLUXDB_INIT_ORG=cryptocurrency
+      - DOCKER_INFLUXDB_INIT_BUCKET=crypto_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=your_super_secret_admin_token
+    volumes:
+      - influxdb-storage:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    networks:
+      - lcw-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LCW Data Fetcher Application
+  lcw-fetcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lcw-data-fetcher
+    depends_on:
+      - influxdb
+    environment:
+      # Live Coin Watch API
+      - LCW_API_KEY=${LCW_API_KEY}
+      - LCW_BASE_URL=https://api.livecoinwatch.com
+      
+      # InfluxDB Configuration
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:-your_super_secret_admin_token}
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-cryptocurrency}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-crypto_data}
+      
+      # Application Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FETCH_INTERVAL_MINUTES=${FETCH_INTERVAL_MINUTES:-10}
+      - MAX_COINS_PER_FETCH=${MAX_COINS_PER_FETCH:-50}
+      - TRACKED_COINS=${TRACKED_COINS:-BTC,ETH,BNB,XRP,ADA}
+      
+      # Scheduling
+      - ENABLE_SCHEDULER=${ENABLE_SCHEDULER:-true}
+      - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-UTC}
+      - REQUESTS_PER_MINUTE=${REQUESTS_PER_MINUTE:-30}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - lcw-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "lcw_fetcher.main", "status"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # Grafana for data visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lcw-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - lcw-network
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb-storage:
+    driver: local
+  influxdb-config:
+    driver: local
+  grafana-storage:
+    driver: local
+
+networks:
+  lcw-network:
+    driver: bridge
