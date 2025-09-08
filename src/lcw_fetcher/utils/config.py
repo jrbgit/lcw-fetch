@@ -66,3 +66,21 @@ class Config(BaseSettings):
         "env_file_encoding": "utf-8",
         "case_sensitive": False
     }
+
+
+# Global config instance
+_config_instance: Optional[Config] = None
+
+
+def get_config() -> Config:
+    """Get the global config instance."""
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+def set_config(config: Config) -> None:
+    """Set the global config instance."""
+    global _config_instance
+    _config_instance = config

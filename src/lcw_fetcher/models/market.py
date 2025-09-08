@@ -16,7 +16,9 @@ class Market(BaseModel):
     
     def to_influx_point(self) -> Dict[str, Any]:
         """Convert to InfluxDB point format"""
-        fields = {}
+        fields = {
+            'record_count': 1  # Always include at least one field for valid InfluxDB point
+        }
         tags = {
             'currency': self.currency
         }

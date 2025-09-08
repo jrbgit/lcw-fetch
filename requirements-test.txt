@@ -1,0 +1,42 @@
+# Test dependencies for LCW API Fetcher
+# These are additional dependencies needed for testing
+
+# Core testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.1
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1
+pytest-xdist>=3.3.1  # For parallel test execution
+pytest-sugar>=0.9.7  # Better test output formatting
+pytest-html>=3.2.0   # HTML test reports
+
+# Testing utilities
+faker>=19.3.0         # For generating fake test data
+factory-boy>=3.3.0    # For creating test fixtures
+freezegun>=1.2.2      # For mocking datetime in tests
+responses>=0.23.3     # For mocking HTTP requests
+testcontainers>=3.7.0 # For integration tests with real services
+
+# Coverage and reporting
+coverage>=7.3.0       # Code coverage measurement
+coverage[toml]>=7.3.0 # TOML support for coverage config
+
+# Code quality (for test code)
+flake8>=6.0.0         # Linting
+black>=23.7.0         # Code formatting
+isort>=5.12.0         # Import sorting
+mypy>=1.5.1           # Type checking
+
+# Performance testing
+pytest-benchmark>=4.0.0  # For performance benchmarks
+
+# Documentation testing
+# Note: pytest has built-in doctest support via --doctest-modules flag
+
+# Database testing utilities
+# pytest-postgresql>=5.0.0  # For PostgreSQL testing (if needed) - Commented out due to Windows compatibility issues
+pytest-redis>=3.0.0       # For Redis testing (if needed)
+
+# HTTP testing
+httpx>=0.24.1         # For async HTTP testing
+requests-mock>=1.11.0 # For mocking requests

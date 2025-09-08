@@ -299,8 +299,40 @@ class DataFetcher:
         
         return stats
     
+    def connect(self) -> None:
+        """Connect to database"""
+        try:
+            self.db_client.connect()
+            logger.info("Connected to database successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect to database: {e}")
+            raise
+    
+    def fetch_and_store_coins(self) -> bool:
+        """Fetch and store coin data"""
+        coins = self.fetch_coins_list()
+        if coins:
+            return self.store_coins(coins)
+        return True
+    
+    def fetch_and_store_exchanges(self) -> bool:
+        """Fetch and store exchange data"""
+        exchanges = self.fetch_exchanges_list()
+        if exchanges:
+            return self.store_exchanges(exchanges)
+        return True
+    
+    def fetch_and_store_market_overview(self) -> bool:
+        """Fetch and store market overview data"""
+        markets = self.fetch_market_overview()
+        if markets:
+            return self.store_markets(markets)
+        return True
+    
     def close(self) -> None:
         """Close all connections"""
         if self.lcw_client:
             self.lcw_client.close()
+        if hasattr(self.db_client, 'close'):
+            self.db_client.disconnect()
         # db_client closes automatically when used as context manager
