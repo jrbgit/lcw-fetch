@@ -128,7 +128,7 @@ INFLUXDB_BUCKET=cryptocurrency_data
 LOG_LEVEL=INFO
 FETCH_INTERVAL_MINUTES=5
 MAX_COINS_PER_FETCH=100
-TRACKED_COINS=BTC,ETH,BNB,XRP,ADA,GLQ
+TRACKED_COINS=BTC,ETH,GLQ
 
 # Scheduling Configuration
 ENABLE_SCHEDULER=true
@@ -304,7 +304,7 @@ tail -f logs/lcw_fetcher.log
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `FETCH_INTERVAL_MINUTES` | `5` | Regular fetch interval |
 | `MAX_COINS_PER_FETCH` | `100` | Maximum coins per request |
-| `TRACKED_COINS` | `BTC,ETH,BNB,XRP,ADA,GLQ` | Specific coins to track |
+| `TRACKED_COINS` | `BTC,ETH,GLQ` | Specific coins to track |
 | `ENABLE_SCHEDULER` | `true` | Enable/disable scheduler |
 | `SCHEDULER_TIMEZONE` | `UTC` | Scheduler timezone |
 | `JOB_MISFIRE_GRACE_TIME` | `60` | Grace time in seconds for late job execution |
