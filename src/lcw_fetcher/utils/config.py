@@ -26,7 +26,7 @@ class Config(BaseSettings):
     database_name: str = Field("crypto_timeseries", env="DATABASE_NAME")
     
     # Coins to track (comma-separated)
-    tracked_coins: str = Field("BTC,ETH,BNB,XRP,ADA", env="TRACKED_COINS")
+    tracked_coins: str = Field("BTC,ETH,BNB,XRP,ADA,GLQ", env="TRACKED_COINS")
     
     # Scheduling settings
     enable_scheduler: bool = Field(True, env="ENABLE_SCHEDULER")
