@@ -157,7 +157,7 @@ make ci-local
 - Automatic backoff on rate limit exceeded
 
 **Scheduling System:**
-- Multiple job types: regular fetch (5min), hourly exchanges, daily historical, weekly full sync
+- Multiple job types: frequent fetch (1min), hourly exchanges, daily historical, weekly full sync
 - Non-overlapping job execution with max_instances=1
 - Graceful shutdown handling for all scheduled jobs
 

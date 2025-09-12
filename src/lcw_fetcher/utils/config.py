@@ -19,7 +19,7 @@ class Config(BaseSettings):
     
     # Application settings
     log_level: str = Field("INFO", env="LOG_LEVEL")
-    fetch_interval_minutes: int = Field(5, env="FETCH_INTERVAL_MINUTES")
+    fetch_interval_minutes: int = Field(5, env="FETCH_INTERVAL_MINUTES")  # Legacy setting, new scheduler uses 1-minute intervals
     max_coins_per_fetch: int = Field(100, env="MAX_COINS_PER_FETCH")
     
     # Database settings

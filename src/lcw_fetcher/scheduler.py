@@ -50,21 +50,27 @@ class DataScheduler:
         
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     
-    def add_regular_fetch_job(self) -> None:
-        """Add regular data fetching job"""
-        trigger = IntervalTrigger(minutes=self.config.fetch_interval_minutes)
+    def add_frequent_fetch_job(self) -> None:
+        """Add frequent data fetching job (every 1 minute)"""
+        trigger = IntervalTrigger(minutes=1)
         
         self.scheduler.add_job(
-            func=self._fetch_job_wrapper,
+            func=self._frequent_fetch_wrapper,
             trigger=trigger,
-            id='regular_fetch',
-            name='Regular Data Fetch',
+            id='frequent_fetch',
+            name='Frequent Data Fetch',
             max_instances=1,  # Prevent overlapping runs
             misfire_grace_time=self.config.job_misfire_grace_time,  # Configurable grace time
             replace_existing=True
         )
         
-        logger.info(f"Added regular fetch job (every {self.config.fetch_interval_minutes} minutes)")
+        logger.info("Added frequent fetch job (every 1 minute)")
+    
+    def add_regular_fetch_job(self) -> None:
+        """Add regular data fetching job (configurable interval, now unused)"""
+        # This method is kept for backward compatibility but not used
+        # The frequent_fetch_job (1 minute) now handles this functionality
+        pass
     
     def add_hourly_exchange_fetch(self) -> None:
         """Add hourly exchange data fetching"""
@@ -114,15 +120,20 @@ class DataScheduler:
         
         logger.info("Added weekly full sync job")
     
-    def _fetch_job_wrapper(self) -> None:
-        """Wrapper for regular fetch job"""
-        logger.info("Starting regular fetch job")
+    def _frequent_fetch_wrapper(self) -> None:
+        """Wrapper for frequent fetch job (1 minute interval)"""
+        logger.info("Starting frequent fetch job")
         try:
             stats = self.fetcher.run_full_fetch()
-            logger.info(f"Regular fetch completed: {stats}")
+            logger.info(f"Frequent fetch completed: {stats}")
         except Exception as e:
-            logger.error(f"Regular fetch job failed: {e}")
+            logger.error(f"Frequent fetch job failed: {e}")
             raise
+    
+    def _fetch_job_wrapper(self) -> None:
+        """Wrapper for regular fetch job (legacy, now unused)"""
+        # This method is kept for backward compatibility but not used
+        pass
     
     def _fetch_exchanges_wrapper(self) -> None:
         """Wrapper for exchange fetch job"""
@@ -214,7 +225,7 @@ class DataScheduler:
         logger.info("Starting data scheduler...")
         
         # Add all jobs
-        self.add_regular_fetch_job()
+        self.add_frequent_fetch_job()  # New 1-minute job
         self.add_hourly_exchange_fetch()
         self.add_daily_historical_fetch()
         self.add_weekly_full_sync()

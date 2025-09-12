@@ -126,7 +126,7 @@ INFLUXDB_BUCKET=cryptocurrency_data
 
 # Application Configuration
 LOG_LEVEL=INFO
-FETCH_INTERVAL_MINUTES=5
+FETCH_INTERVAL_MINUTES=1
 MAX_COINS_PER_FETCH=100
 TRACKED_COINS=BTC,ETH,GLQ
 
@@ -243,7 +243,7 @@ GROUP BY time(1h)
 The application supports multiple scheduling patterns:
 
 ### Default Schedule
-- **Regular Fetch**: Every 5 minutes (configurable)
+- **Frequent Fetch**: Every 1 minute (real-time data collection)
 - **Exchange Data**: Every hour
 - **Historical Data**: Daily at 2:00 AM
 - **Full Sync**: Weekly on Sunday at 3:00 AM
@@ -302,7 +302,7 @@ tail -f logs/lcw_fetcher.log
 | `INFLUXDB_ORG` | *required* | InfluxDB organization name |
 | `INFLUXDB_BUCKET` | `cryptocurrency_data` | InfluxDB bucket name |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `FETCH_INTERVAL_MINUTES` | `5` | Regular fetch interval |
+| `FETCH_INTERVAL_MINUTES` | `5` | Legacy fetch interval (now uses 1-minute intervals) |
 | `MAX_COINS_PER_FETCH` | `100` | Maximum coins per request |
 | `TRACKED_COINS` | `BTC,ETH,GLQ` | Specific coins to track |
 | `ENABLE_SCHEDULER` | `true` | Enable/disable scheduler |
