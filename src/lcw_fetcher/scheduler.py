@@ -19,7 +19,14 @@ class DataScheduler:
     def __init__(self, config: Config):
         self.config = config
         self.fetcher = DataFetcher(config)
-        self.scheduler = BlockingScheduler(timezone=config.scheduler_timezone)
+        # Configure scheduler with job defaults including misfire grace time
+        job_defaults = {
+            'misfire_grace_time': config.job_misfire_grace_time  # Configurable grace time
+        }
+        self.scheduler = BlockingScheduler(
+            timezone=config.scheduler_timezone,
+            job_defaults=job_defaults
+        )
         self._setup_signal_handlers()
         self._setup_job_listeners()
     
@@ -53,6 +60,7 @@ class DataScheduler:
             id='regular_fetch',
             name='Regular Data Fetch',
             max_instances=1,  # Prevent overlapping runs
+            misfire_grace_time=self.config.job_misfire_grace_time,  # Configurable grace time
             replace_existing=True
         )
         
@@ -68,6 +76,7 @@ class DataScheduler:
             id='hourly_exchanges',
             name='Hourly Exchange Fetch',
             max_instances=1,
+            misfire_grace_time=max(self.config.job_misfire_grace_time, 300),  # At least 5 minutes for hourly jobs
             replace_existing=True
         )
         
@@ -83,6 +92,7 @@ class DataScheduler:
             id='daily_historical',
             name='Daily Historical Fetch',
             max_instances=1,
+            misfire_grace_time=max(self.config.job_misfire_grace_time, 1800),  # At least 30 minutes for daily jobs
             replace_existing=True
         )
         
@@ -98,6 +108,7 @@ class DataScheduler:
             id='weekly_full_sync',
             name='Weekly Full Sync',
             max_instances=1,
+            misfire_grace_time=max(self.config.job_misfire_grace_time, 3600),  # At least 1 hour for weekly jobs
             replace_existing=True
         )
         

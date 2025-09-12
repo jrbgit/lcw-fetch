@@ -31,6 +31,7 @@ class Config(BaseSettings):
     # Scheduling settings
     enable_scheduler: bool = Field(True, env="ENABLE_SCHEDULER")
     scheduler_timezone: str = Field("UTC", env="SCHEDULER_TIMEZONE")
+    job_misfire_grace_time: int = Field(60, env="JOB_MISFIRE_GRACE_TIME")
     
     # API rate limiting
     requests_per_minute: int = Field(60, env="REQUESTS_PER_MINUTE")
@@ -55,6 +56,13 @@ class Config(BaseSettings):
     def validate_max_coins(cls, v):
         if v < 1 or v > 1000:
             raise ValueError('Max coins per fetch must be between 1 and 1000')
+        return v
+    
+    @field_validator('job_misfire_grace_time')
+    @classmethod
+    def validate_grace_time(cls, v):
+        if v < 0 or v > 3600:
+            raise ValueError('Job misfire grace time must be between 0 and 3600 seconds')
         return v
     
     def get_tracked_coins(self) -> List[str]:

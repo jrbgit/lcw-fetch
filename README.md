@@ -307,6 +307,7 @@ tail -f logs/lcw_fetcher.log
 | `TRACKED_COINS` | `BTC,ETH,BNB,XRP,ADA` | Specific coins to track |
 | `ENABLE_SCHEDULER` | `true` | Enable/disable scheduler |
 | `SCHEDULER_TIMEZONE` | `UTC` | Scheduler timezone |
+| `JOB_MISFIRE_GRACE_TIME` | `60` | Grace time in seconds for late job execution |
 | `REQUESTS_PER_MINUTE` | `60` | API rate limit |
 
 ## Development
@@ -374,6 +375,14 @@ Error: Invalid API key
 ```
 - Verify your `LCW_API_KEY` is correct
 - Check API key permissions and quota
+
+**Job Scheduling Misfire:**
+```
+Run time of job "JobName" was missed by X:XX:XX
+```
+- Increase `JOB_MISFIRE_GRACE_TIME` to allow more late execution time
+- Check system load - jobs may be delayed due to high CPU usage
+- Consider reducing fetch frequency if jobs consistently run late
 
 ### Debug Mode
 ```bash
