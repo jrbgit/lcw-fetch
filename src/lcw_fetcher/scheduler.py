@@ -207,13 +207,21 @@ class DataScheduler:
             raise
     
     def run_once(self) -> None:
-        """Run a single fetch cycle immediately"""
-        logger.info("Running one-time fetch")
+        """Run a single fetch cycle immediately with 24-hour historical data"""
+        logger.info("Running one-time fetch with 24-hour historical data")
         try:
-            stats = self.fetcher.run_full_fetch()
-            logger.info(f"One-time fetch completed: {stats}")
+            stats = self.fetcher.run_full_fetch_with_history()
+            logger.info(f"One-time fetch with history completed: {stats}")
+            
+            # Display summary to user
+            if stats.get('historical_fetched', 0) > 0:
+                logger.info(f"✅ Successfully fetched {stats['historical_fetched']} historical data points")
+                logger.info(f"✅ Successfully stored {stats['historical_stored']} historical records")
+            else:
+                logger.warning("⚠️ No historical data was fetched")
+                
         except Exception as e:
-            logger.error(f"One-time fetch failed: {e}")
+            logger.error(f"One-time fetch with history failed: {e}")
             raise
     
     def start(self) -> None:

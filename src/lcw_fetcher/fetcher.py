@@ -238,6 +238,8 @@ class DataFetcher:
             'exchanges_stored': 0,
             'markets_fetched': 0,
             'markets_stored': 0,
+            'historical_fetched': 0,
+            'historical_stored': 0,
             'errors': 0
         }
         
@@ -295,6 +297,128 @@ class DataFetcher:
         
         elapsed = datetime.utcnow() - start_time
         logger.info(f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds")
+        logger.info(f"Stats: {stats}")
+        
+        return stats
+    
+    def run_full_fetch_with_history(self) -> Dict[str, int]:
+        """Run a complete data fetch cycle including 24-hour historical data"""
+        logger.info("Starting full fetch cycle with historical data")
+        start_time = datetime.utcnow()
+        
+        stats = {
+            'coins_fetched': 0,
+            'coins_stored': 0,
+            'exchanges_fetched': 0,
+            'exchanges_stored': 0,
+            'markets_fetched': 0,
+            'markets_stored': 0,
+            'historical_fetched': 0,
+            'historical_stored': 0,
+            'errors': 0
+        }
+        
+        # Check API status first
+        if not self.check_api_status():
+            logger.error("API is not available, skipping fetch cycle")
+            stats['errors'] += 1
+            return stats
+        
+        # Get API credits
+        credits = self.get_api_credits()
+        if credits and credits.get('dailyCreditsRemaining', 0) < 20:
+            logger.warning("Low API credits remaining, consider reducing fetch frequency")
+        
+        # Fetch tracked coins specifically
+        tracked_coins = self.config.get_tracked_coins()
+        if tracked_coins:
+            coins = self.fetch_specific_coins(tracked_coins)
+            stats['coins_fetched'] = len(coins)
+            
+            if self.store_coins(coins):
+                stats['coins_stored'] = len(coins)
+            else:
+                stats['errors'] += 1
+        
+        # Fetch top coins list
+        top_coins = self.fetch_coins_list(limit=20)  # Just top 20 for regular updates
+        if top_coins:
+            stats['coins_fetched'] += len(top_coins)
+            
+            if self.store_coins(top_coins):
+                stats['coins_stored'] += len(top_coins)
+            else:
+                stats['errors'] += 1
+        
+        # Fetch exchanges (less frequently)
+        exchanges = self.fetch_exchanges_list(limit=20)
+        if exchanges:
+            stats['exchanges_fetched'] = len(exchanges)
+            
+            if self.store_exchanges(exchanges):
+                stats['exchanges_stored'] = len(exchanges)
+            else:
+                stats['errors'] += 1
+        
+        # Fetch market overview
+        markets = self.fetch_market_overview()
+        if markets:
+            stats['markets_fetched'] = len(markets)
+            
+            if self.store_markets(markets):
+                stats['markets_stored'] = len(markets)
+            else:
+                stats['errors'] += 1
+        
+        # NEW: Fetch 24-hour historical data for tracked coins
+        logger.info("Fetching 24-hour historical data for tracked coins...")
+        if tracked_coins:
+            for coin_code in tracked_coins:
+                try:
+                    # Check remaining API credits before each historical fetch
+                    credits = self.get_api_credits()
+                    if credits and credits.get('dailyCreditsRemaining', 0) < 5:
+                        logger.warning(f"Low API credits ({credits.get('dailyCreditsRemaining', 0)}), skipping historical fetch for {coin_code}")
+                        break
+                    
+                    logger.info(f"Fetching 24-hour history for {coin_code}...")
+                    coin_with_history = self.fetch_coin_history(coin_code, hours_back=24)
+                    
+                    if coin_with_history and coin_with_history.history:
+                        stats['historical_fetched'] += len(coin_with_history.history)
+                        logger.info(f"Retrieved {len(coin_with_history.history)} historical points for {coin_code}")
+                        
+                        # Store historical data points as individual coin records
+                        historical_coins_stored = 0
+                        for hist_point in coin_with_history.history:
+                            try:
+                                # Create a coin record for each historical point
+                                historical_coin = coin_with_history.model_copy(deep=True)
+                                historical_coin.rate = hist_point.rate
+                                historical_coin.volume = hist_point.volume
+                                historical_coin.cap = hist_point.cap
+                                historical_coin.fetched_at = datetime.fromtimestamp(hist_point.date / 1000)
+                                historical_coin.history = []  # Clear history to avoid recursion
+                                
+                                if self.store_coins([historical_coin]):
+                                    historical_coins_stored += 1
+                                else:
+                                    logger.warning(f"Failed to store historical point for {coin_code} at {historical_coin.fetched_at}")
+                            except Exception as e:
+                                logger.error(f"Error processing historical point for {coin_code}: {e}")
+                                stats['errors'] += 1
+                        
+                        stats['historical_stored'] += historical_coins_stored
+                        logger.info(f"Stored {historical_coins_stored} historical records for {coin_code}")
+                    else:
+                        logger.warning(f"No historical data retrieved for {coin_code}")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to fetch historical data for {coin_code}: {e}")
+                    stats['errors'] += 1
+        
+        elapsed = datetime.utcnow() - start_time
+        logger.info(f"Full fetch cycle with history completed in {elapsed.total_seconds():.2f} seconds")
         logger.info(f"Stats: {stats}")
         
         return stats

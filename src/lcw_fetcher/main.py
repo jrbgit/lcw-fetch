@@ -56,16 +56,20 @@ def cli(ctx, config_file, log_level):
 @cli.command()
 @click.pass_context
 def run_once(ctx):
-    """Run a single data fetch cycle"""
+    """Run a single data fetch cycle including 24-hour historical data"""
     config = ctx.obj['config']
     
-    click.echo("Starting one-time data fetch...")
-    logger.info("Starting one-time data fetch")
+    click.echo("Starting one-time data fetch with 24-hour historical data...")
+    tracked_coins = config.get_tracked_coins()
+    click.echo(f"📊 Tracked coins: {', '.join(tracked_coins)}")
+    click.echo("⏳ This will fetch current data + 24h history for each tracked coin...")
+    logger.info("Starting one-time data fetch with historical data")
     
     try:
         scheduler = DataScheduler(config)
         scheduler.run_once()
-        click.echo("✅ Data fetch completed successfully")
+        click.echo("✅ Data fetch with 24-hour historical data completed successfully")
+        click.echo("📊 Check your InfluxDB/Grafana dashboard for the new historical data points!")
         
     except KeyboardInterrupt:
         click.echo("❌ Fetch interrupted by user")
@@ -189,6 +193,67 @@ def config(ctx):
     tracked_coins = config_obj.get_tracked_coins()
     click.echo(f"\n🪙 Tracked Coins ({len(tracked_coins)}):")
     click.echo(f"   {', '.join(tracked_coins)}")
+
+
+@cli.command()
+@click.option('--coin', '-c', multiple=True, help='Specific coin codes to fetch historical data for')
+@click.option('--hours', '-h', type=int, default=24, help='Number of hours of history to fetch (default: 24)')
+@click.pass_context
+def history(ctx, coin, hours):
+    """Fetch historical data for specific coins"""
+    config = ctx.obj['config']
+    
+    # Determine which coins to fetch
+    if coin:
+        coin_list = list(coin)
+    else:
+        coin_list = config.get_tracked_coins()
+    
+    if not coin_list:
+        click.echo("❌ No coins specified and no tracked coins configured")
+        return
+    
+    click.echo(f"Fetching {hours}-hour historical data for: {', '.join(coin_list)}")
+    
+    try:
+        fetcher = DataFetcher(config)
+        total_historical_stored = 0
+        
+        for coin_code in coin_list:
+            click.echo(f"⏳ Fetching history for {coin_code}...")
+            coin_with_history = fetcher.fetch_coin_history(coin_code, hours_back=hours)
+            
+            if coin_with_history and coin_with_history.history:
+                click.echo(f"✅ Retrieved {len(coin_with_history.history)} historical points for {coin_code}")
+                
+                # Store historical data points as individual coin records
+                historical_coins_stored = 0
+                for hist_point in coin_with_history.history:
+                    try:
+                        from datetime import datetime
+                        historical_coin = coin_with_history.model_copy(deep=True)
+                        historical_coin.rate = hist_point.rate
+                        historical_coin.volume = hist_point.volume
+                        historical_coin.cap = hist_point.cap
+                        historical_coin.fetched_at = datetime.fromtimestamp(hist_point.date / 1000)
+                        historical_coin.history = []  # Clear history to avoid recursion
+                        
+                        if fetcher.store_coins([historical_coin]):
+                            historical_coins_stored += 1
+                    except Exception as e:
+                        click.echo(f"⚠️ Error storing historical point for {coin_code}: {e}")
+                
+                total_historical_stored += historical_coins_stored
+                click.echo(f"✅ Stored {historical_coins_stored} historical records for {coin_code}")
+            else:
+                click.echo(f"⚠️ No historical data retrieved for {coin_code}")
+        
+        fetcher.close()
+        click.echo(f"✅ Historical data fetch completed! Stored {total_historical_stored} total records.")
+        
+    except Exception as e:
+        click.echo(f"❌ Historical data fetch failed: {e}")
+        sys.exit(1)
 
 
 @cli.command()
