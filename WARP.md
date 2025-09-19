@@ -82,6 +82,12 @@ python -m lcw_fetcher.main fetch --coin BTC --coin ETH
 
 # Fetch top N coins
 python -m lcw_fetcher.main fetch --limit 50
+
+# Fetch historical data for specific coins
+python -m lcw_fetcher.main history --coin BTC --hours 168
+
+# Fetch historical data for all tracked coins (24h default)
+python -m lcw_fetcher.main history
 ```
 
 ### Docker Commands
@@ -157,9 +163,11 @@ make ci-local
 - Automatic backoff on rate limit exceeded
 
 **Scheduling System:**
-- Multiple job types: frequent fetch (1min), hourly exchanges, daily historical, weekly full sync
+- Multiple job types: frequent fetch (1min), hourly exchanges, daily historical (2 AM), weekly full sync (Sunday 3 AM)
 - Non-overlapping job execution with max_instances=1
-- Graceful shutdown handling for all scheduled jobs
+- Configurable misfire grace time for late job execution
+- Graceful shutdown handling with signal handlers (SIGINT/SIGTERM)
+- Job-specific grace times: 60s for frequent, 300s for hourly, 1800s for daily, 3600s for weekly
 
 **Database Design:**
 - Time-series optimized for InfluxDB 2.x
@@ -202,11 +210,13 @@ $env:FETCH_INTERVAL_MINUTES="5"
 ```
 
 ### Adding New Data Sources
-1. Create model in `src/lcw_fetcher/models/`
-2. Add API methods to `src/lcw_fetcher/api/client.py`
-3. Update fetcher logic in `src/lcw_fetcher/fetcher.py`
-4. Add storage methods to `src/lcw_fetcher/database/influx_client.py`
+1. Create model in `src/lcw_fetcher/models/` (extend `BaseModel` with `to_influx_point()` method)
+2. Add API methods to `src/lcw_fetcher/api/client.py` (include error handling and retries)
+3. Update fetcher logic in `src/lcw_fetcher/fetcher.py` (add rate limiting and error recovery)
+4. Add storage methods to `src/lcw_fetcher/database/influx_client.py` (batch writes for efficiency)
 5. Write tests in both `tests/unit/` and `tests/integration/`
+6. Add CLI commands in `main.py` if user interaction needed
+7. Update configuration in `utils/config.py` if new settings required
 
 ### Database Schema Considerations
 - InfluxDB measurements use tags for dimensions, fields for metrics
@@ -221,9 +231,57 @@ $env:FETCH_INTERVAL_MINUTES="5"
 - Logs directory needs write permissions in production
 
 ### Configuration Validation
-- All config uses Pydantic with field validators
-- API keys and tokens are required fields
-- Numeric ranges are validated (fetch intervals, coin limits)
+- All config uses Pydantic with field validators and type safety
+- API keys and tokens are required fields with sensitive data masking in logs
+- Numeric ranges are validated (fetch intervals 1-∞ min, coin limits 1-1000)
 - Timezone and log level validation with specific allowed values
+- Tracked coins parsed from comma-separated string with automatic uppercasing
+- Global config singleton pattern for consistent access across modules
 
-This codebase emphasizes reliability, observability, and maintainability for long-running cryptocurrency data collection with comprehensive error handling and monitoring capabilities.
+### Key Environment Variables
+```powershell
+# Core settings (required)
+$env:LCW_API_KEY="your_api_key"
+$env:INFLUXDB_TOKEN="your_token"
+$env:INFLUXDB_ORG="your_org"
+
+# Application behavior
+$env:TRACKED_COINS="BTC,ETH,GLQ"           # Coins to monitor specifically
+$env:REQUESTS_PER_MINUTE="60"              # API rate limiting
+$env:JOB_MISFIRE_GRACE_TIME="60"          # Late job tolerance (seconds)
+$env:SCHEDULER_TIMEZONE="UTC"              # Job scheduling timezone
+$env:MAX_COINS_PER_FETCH="100"            # Limit per API call
+
+# Optional with sensible defaults
+$env:INFLUXDB_URL="http://localhost:8086"  # Database connection
+$env:INFLUXDB_BUCKET="cryptocurrency_data" # Time series bucket
+$env:LOG_LEVEL="INFO"                      # DEBUG|INFO|WARNING|ERROR|CRITICAL
+```
+
+### Debugging and Troubleshooting
+
+**Common Issues:**
+- **API Rate Limiting:** Reduce `REQUESTS_PER_MINUTE` or check API quota with `status` command
+- **Job Misfires:** Increase `JOB_MISFIRE_GRACE_TIME` or check system load
+- **Database Connection:** Verify InfluxDB URL, token, and organization settings
+- **Missing Data:** Check tracked coins configuration and API response validation
+
+**Log Analysis:**
+```powershell
+# Monitor logs in real-time
+tail -f logs/lcw_fetcher.log
+
+# Check error logs only
+tail -f logs/errors.log
+
+# Debug mode with verbose output
+python -m lcw_fetcher.main --log-level DEBUG status
+```
+
+**Data Validation:**
+- All API responses validated through Pydantic models
+- Historical data converted from Unix timestamps to datetime objects
+- Rate/volume/cap fields converted to float with null handling
+- Delta calculations preserved across different time periods
+
+This codebase emphasizes reliability, observability, and maintainability for long-running cryptocurrency data collection with comprehensive error handling, rate limiting, and monitoring capabilities optimized for continuous operation.
