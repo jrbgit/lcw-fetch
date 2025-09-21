@@ -1,9 +1,39 @@
 apiVersion: 1
 
 providers:
-  - name: 'LCW Dashboards'
+  - name: 'LCW Main Dashboard'
     orgId: 1
-    folder: ''
+    folder: 'Live Coin Watch'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+  
+  - name: 'LCW System Monitoring'
+    orgId: 1
+    folder: 'System Health'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+  
+  - name: 'LCW Market Analysis'
+    orgId: 1
+    folder: 'Market Analytics'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+  
+  - name: 'LCW Portfolio & Alerts'
+    orgId: 1
+    folder: 'Portfolio Management'
     type: file
     disableDeletion: false
     updateIntervalSeconds: 10
