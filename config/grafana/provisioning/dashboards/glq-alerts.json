@@ -1,0 +1,1372 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "GLQ GraphLinq Chain alerting dashboard - price thresholds, volume alerts, performance notifications, and critical metric monitoring",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Main GLQ Dashboard",
+      "tooltip": "Open main GLQ monitoring dashboard",
+      "type": "dashboards",
+      "url": "/d/glq-graphlinq-chain"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Network Health",
+      "tooltip": "Open GLQ network health dashboard",
+      "type": "dashboards",
+      "url": "/d/glq-network-health"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Critical price alert indicator",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Normal"
+                },
+                "1": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "Warning"
+                },
+                "2": {
+                  "color": "red",
+                  "index": 2,
+                  "text": "Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "// Price alert levels based on 24h change and volatility\nchange_24h = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"delta_24h\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n\nchange_1h = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"delta_1h\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n\nunion(tables: [change_24h, change_1h])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: if math.abs(x: r.delta_24h) > 20.0 or math.abs(x: r.delta_1h) > 10.0 then 2.0 else if math.abs(x: r.delta_24h) > 10.0 or math.abs(x: r.delta_1h) > 5.0 then 1.0 else 0.0\n  }))\n  |> yield(name: \"price_alert_level\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Price Alert Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Volume anomaly detection",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Normal"
+                },
+                "1": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "Low Volume"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "High Volume"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "// Volume anomaly detection\ncurrent_volume = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"volume\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n\navg_volume = from(bucket: \"crypto_data\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"volume\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> mean()\n\nunion(tables: [current_volume, avg_volume])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: if r.volume < r.mean * 0.3 then 1.0 else if r.volume > r.mean * 3.0 then 2.0 else 0.0\n  }))\n  |> yield(name: \"volume_anomaly\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Volume Alert Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Market rank change alert",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Stable"
+                },
+                "1": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "Rank Drop"
+                },
+                "2": {
+                  "color": "light-green",
+                  "index": 2,
+                  "text": "Rank Rise"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "light-green",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "// Rank change detection (simplified - comparing current to 24h ago approximation)\ncurrent_rank = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rank\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: if float(v: r._value) > 200.0 then 1.0 else if float(v: r._value) < 100.0 then 2.0 else 0.0}))\n  |> yield(name: \"rank_alert\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Rank Alert Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "GLQ price with alert thresholds",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Price (USD)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "hue",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.001
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "green",
+                "value": 0.05
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "from(bucket: \"crypto_data\")\n  |> range(start: $__timeFrom, stop: $__timeTo)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rate\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> aggregateWindow(every: $__interval, fn: mean, createEmpty: false)\n  |> yield(name: \"glq_price_with_thresholds\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GLQ Price with Alert Thresholds",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Volume alerts and monitoring",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Volume (USD)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10000
+              },
+              {
+                "color": "green",
+                "value": 50000
+              },
+              {
+                "color": "orange",
+                "value": 500000
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "from(bucket: \"crypto_data\")\n  |> range(start: $__timeFrom, stop: $__timeTo)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"volume\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> aggregateWindow(every: $__interval, fn: mean, createEmpty: false)\n  |> yield(name: \"glq_volume_alerts\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GLQ Volume with Alert Thresholds",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Critical alerts summary table",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delta_24h"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "24H Change"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": -15
+                    },
+                    {
+                      "color": "green",
+                      "value": -5
+                    },
+                    {
+                      "color": "green",
+                      "value": 5
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 15
+                    },
+                    {
+                      "color": "red",
+                      "value": 25
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delta_1h"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "1H Change"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": -10
+                    },
+                    {
+                      "color": "green",
+                      "value": -3
+                    },
+                    {
+                      "color": "green",
+                      "value": 3
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 15
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "volume"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "24H Volume"
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10000
+                    },
+                    {
+                      "color": "green",
+                      "value": 50000
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Current Price"
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rank"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Market Rank"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "light-green",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 100
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 200
+                    },
+                    {
+                      "color": "red",
+                      "value": 500
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rate\" or r[\"_field\"] == \"delta_1h\" or r[\"_field\"] == \"delta_24h\" or r[\"_field\"] == \"volume\" or r[\"_field\"] == \"rank\")\n  |> last()\n  |> pivot(rowKey: [\"code\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> yield(name: \"alert_summary\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GLQ Critical Metrics Alert Summary",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Performance degradation detection",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "Performance Score",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -15
+              },
+              {
+                "color": "green",
+                "value": -5
+              },
+              {
+                "color": "green",
+                "value": 5
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delta_1h"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "1H Performance"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delta_24h"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "24H Performance"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "delta_7d"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "7D Performance"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "from(bucket: \"crypto_data\")\n  |> range(start: $__timeFrom, stop: $__timeTo)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] =~ /^delta_/)\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> aggregateWindow(every: $__interval, fn: mean, createEmpty: false)\n  |> yield(name: \"performance_alerts\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GLQ Performance Alert Monitor",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Liquidity and market health alerts",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Health Metrics",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 25000
+              },
+              {
+                "color": "green",
+                "value": 100000
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "exchanges"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Active Exchanges"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "liquidity"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Liquidity Depth"
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "from(bucket: \"crypto_data\")\n  |> range(start: $__timeFrom, stop: $__timeTo)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"liquidity\" or r[\"_field\"] == \"exchanges\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> aggregateWindow(every: $__interval, fn: mean, createEmpty: false)\n  |> yield(name: \"market_health_alerts\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GLQ Market Health Alerts",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Overall system alert status",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "All Clear"
+                },
+                "1": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "Minor Issues"
+                },
+                "2": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "Multiple Alerts"
+                },
+                "3": {
+                  "color": "red",
+                  "index": 3,
+                  "text": "Critical State"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 27
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "// Overall system alert aggregation\nchange_24h = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"delta_24h\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _field: \"price_alert\", _value: if math.abs(x: r._value) > 25.0 then 1.0 else 0.0}))\n\nvolume = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"volume\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _field: \"volume_alert\", _value: if r._value < 5000.0 then 1.0 else 0.0}))\n\nrank = from(bucket: \"crypto_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rank\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _field: \"rank_alert\", _value: if float(v: r._value) > 300.0 then 1.0 else 0.0}))\n\nunion(tables: [change_24h, volume, rank])\n  |> sum()\n  |> yield(name: \"overall_alert_status\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Overall Alert Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-lcw"
+      },
+      "description": "Recent alert activity log",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "_time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Timestamp"
+              },
+              {
+                "id": "unit",
+                "value": "time: YYYY-MM-DD HH:mm:ss"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 16,
+        "x": 8,
+        "y": 27
+      },
+      "id": 10,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "9.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-lcw"
+          },
+          "query": "// Recent significant changes log\nfrom(bucket: \"crypto_data\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cryptocurrency_data\")\n  |> filter(fn: (r) => r[\"_field\"] =~ /^delta_/ or r[\"_field\"] == \"volume\" or r[\"_field\"] == \"rank\")\n  |> filter(fn: (r) => r[\"code\"] == \"GLQ\")\n  |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 20)\n  |> yield(name: \"alert_log\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Alert Activity",
+      "type": "table"
+    }
+  ],
+  "refresh": "2m",
+  "revision": 1,
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "GLQ",
+    "GraphLinq",
+    "alerts",
+    "monitoring",
+    "notifications",
+    "thresholds"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "10",
+          "value": "10"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Price Alert Threshold (%)",
+        "multi": false,
+        "name": "price_threshold",
+        "options": [
+          {
+            "selected": false,
+            "text": "5",
+            "value": "5"
+          },
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "selected": false,
+            "text": "15",
+            "value": "15"
+          },
+          {
+            "selected": false,
+            "text": "20",
+            "value": "20"
+          }
+        ],
+        "query": "5,10,15,20",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "50000",
+          "value": "50000"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Volume Alert Threshold (USD)",
+        "multi": false,
+        "name": "volume_threshold",
+        "options": [
+          {
+            "selected": false,
+            "text": "10000",
+            "value": "10000"
+          },
+          {
+            "selected": false,
+            "text": "25000",
+            "value": "25000"
+          },
+          {
+            "selected": true,
+            "text": "50000",
+            "value": "50000"
+          },
+          {
+            "selected": false,
+            "text": "100000",
+            "value": "100000"
+          }
+        ],
+        "query": "10000,25000,50000,100000",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "GLQ GraphLinq Chain - Alerts & Monitoring",
+  "uid": "glq-alerts",
+  "version": 1,
+  "weekStart": ""
+}

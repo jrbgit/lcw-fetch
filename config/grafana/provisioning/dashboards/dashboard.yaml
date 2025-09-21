@@ -40,3 +40,13 @@ providers:
     allowUiUpdates: true
     options:
       path: /etc/grafana/provisioning/dashboards
+  
+  - name: 'GLQ GraphLinq Chain'
+    orgId: 1
+    folder: 'GLQ Monitoring'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
