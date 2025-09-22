@@ -183,7 +183,7 @@ lcw_data_points_stored_total      # Data storage counters
 
 ## 📊 **Performance Testing & Validation**
 
-### 🧪 **Validation Script (`test_performance_optimizations.py`)**
+### 🧪 **Validation Script (`tests/performance/test_performance_optimizations.py`)**
 Comprehensive testing suite that validates:
 
 1. **API Client Performance**
@@ -209,7 +209,7 @@ Comprehensive testing suite that validates:
 ### 🏃‍♂️ **How to Run Tests**
 ```bash
 # Run performance validation
-python test_performance_optimizations.py
+python tests/performance/test_performance_optimizations.py
 
 # View performance statistics
 python -m lcw_fetcher.main perf-stats
@@ -267,7 +267,7 @@ python -m lcw_fetcher.main status
 curl http://localhost:9099/metrics
 
 # Run performance validation
-python test_performance_optimizations.py
+python tests/performance/test_performance_optimizations.py
 ```
 
 ---
@@ -280,7 +280,7 @@ python test_performance_optimizations.py
 - `src/lcw_fetcher/utils/metrics.py` - Prometheus metrics and observability
 
 ### **Testing & Validation**
-- `test_performance_optimizations.py` - Comprehensive performance validation
+- `tests/performance/test_performance_optimizations.py` - Comprehensive performance validation
 - `PERFORMANCE_OPTIMIZATIONS_SUMMARY.md` - This summary document
 
 ### **Dependencies**

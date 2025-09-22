@@ -89,7 +89,7 @@ Shows current database record counts.
 
 ### Method 4: Test Data Access
 ```bash
-python test_data_access.py
+python tests/test_data_access.py
 ```
 Verifies InfluxDB connectivity and recent data.
 
@@ -163,7 +163,7 @@ docker-compose ps
 ### If Dashboard Shows No Data:
 1. Check if containers are running: `docker-compose ps`
 2. Verify recent data fetch: `docker exec lcw-data-fetcher python -m lcw_fetcher.main fetch --limit 5`
-3. Test database connection: `python test_data_access.py`
+3. Test database connection: `python tests/test_data_access.py`
 4. Check Grafana datasource connection in Settings > Data Sources
 
 ### If 5-Minute Updates Stop:

@@ -35,7 +35,7 @@
 docker-compose logs -f lcw-fetcher
 
 # Method 3: Check data freshness
-python test_data_access.py
+python tests/test_data_access.py
 ```
 
 ## 📋 **OPTIONAL TASKS (Can be done later)**
@@ -93,7 +93,7 @@ docker-compose ps
 docker exec lcw-data-fetcher python -m lcw_fetcher.main status
 
 # Database connectivity test
-python test_data_access.py
+python tests/test_data_access.py
 
 # Recent activity logs
 docker-compose logs --tail=20 lcw-fetcher
