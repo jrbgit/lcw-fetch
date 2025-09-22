@@ -1,12 +1,16 @@
 import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from contextlib import contextmanager
 
 from influxdb_client import InfluxDBClient as BaseInfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 from influxdb_client.domain.write_precision import WritePrecision
+from loguru import logger
 
 from ..models import Coin, Exchange, Market
+from ..utils.performance_logger import track_performance
 
 
 logger = logging.getLogger(__name__)
@@ -21,37 +25,57 @@ class InfluxDBClient:
         token: str,
         org: str,
         bucket: str,
-        timeout: int = 10000
+        timeout: int = 30000,  # Increased timeout for better reliability
+        batch_size: int = 1000,
+        flush_interval: int = 1000
     ):
         self.url = url
         self.token = token
         self.org = org
         self.bucket = bucket
         self.timeout = timeout
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
         
         self._client = None
         self._write_api = None
         self._query_api = None
+        self._connection_pool_initialized = False
     
     def connect(self) -> None:
-        """Establish connection to InfluxDB"""
-        try:
-            self._client = BaseInfluxDBClient(
-                url=self.url,
-                token=self.token,
-                org=self.org,
-                timeout=self.timeout
-            )
-            self._write_api = self._client.write_api(write_options=SYNCHRONOUS)
-            self._query_api = self._client.query_api()
-            
-            # Test connection
-            self._client.health()
-            logger.info("Connected to InfluxDB successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to connect to InfluxDB: {e}")
-            raise
+        """Establish connection to InfluxDB with optimized settings"""
+        with track_performance("influxdb_connect"):
+            try:
+                self._client = BaseInfluxDBClient(
+                    url=self.url,
+                    token=self.token,
+                    org=self.org,
+                    timeout=self.timeout,
+                    enable_gzip=True  # Enable compression
+                )
+                
+                # Configure write options for better performance
+                write_options = WriteOptions(
+                    batch_size=self.batch_size,
+                    flush_interval=self.flush_interval,
+                    jitter_interval=100,
+                    retry_interval=5000,
+                    max_retries=3,
+                    max_retry_delay=30000,
+                    exponential_base=2
+                )
+                
+                self._write_api = self._client.write_api(write_options=write_options)
+                self._query_api = self._client.query_api()
+                
+                # Test connection
+                health_check = self._client.health()
+                logger.info(f"Connected to InfluxDB successfully - Status: {health_check.status}")
+                self._connection_pool_initialized = True
+                
+            except Exception as e:
+                logger.error(f"Failed to connect to InfluxDB: {e}")
+                raise
     
     def disconnect(self) -> None:
         """Close connection to InfluxDB"""
@@ -63,23 +87,37 @@ class InfluxDBClient:
             logger.info("Disconnected from InfluxDB")
     
     def write_coins(self, coins: List[Coin]) -> None:
-        """Write coin data to InfluxDB"""
+        """Write coin data to InfluxDB with performance tracking"""
         if not self._write_api:
             raise RuntimeError("InfluxDB client not connected")
         
-        try:
-            points = [coin.to_influx_point() for coin in coins]
-            self._write_api.write(
-                bucket=self.bucket,
-                org=self.org,
-                record=points,
-                write_precision=WritePrecision.MS
-            )
-            logger.info(f"Successfully wrote {len(coins)} coin records to InfluxDB")
-            
-        except Exception as e:
-            logger.error(f"Failed to write coin data to InfluxDB: {e}")
-            raise
+        with track_performance("influxdb_write_coins", {"coin_count": len(coins)}):
+            try:
+                points = [coin.to_influx_point() for coin in coins]
+                
+                # Write in batches if we have many points
+                if len(points) > self.batch_size:
+                    for i in range(0, len(points), self.batch_size):
+                        batch = points[i:i + self.batch_size]
+                        self._write_api.write(
+                            bucket=self.bucket,
+                            org=self.org,
+                            record=batch,
+                            write_precision=WritePrecision.MS
+                        )
+                else:
+                    self._write_api.write(
+                        bucket=self.bucket,
+                        org=self.org,
+                        record=points,
+                        write_precision=WritePrecision.MS
+                    )
+                
+                logger.info(f"Successfully wrote {len(coins)} coin records to InfluxDB")
+                
+            except Exception as e:
+                logger.error(f"Failed to write coin data to InfluxDB: {e}")
+                raise
     
     def write_exchanges(self, exchanges: List[Exchange]) -> None:
         """Write exchange data to InfluxDB"""
@@ -120,37 +158,38 @@ class InfluxDBClient:
             raise
     
     def query_latest_coins(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Query latest coin data"""
+        """Query latest coin data with performance tracking"""
         if not self._query_api:
             raise RuntimeError("InfluxDB client not connected")
         
-        flux_query = f'''
-            from(bucket: "{self.bucket}")
-            |> range(start: -1d)
-            |> filter(fn: (r) => r._measurement == "cryptocurrency_data")
-            |> last()
-            |> limit(n: {limit})
-        '''
-        
-        try:
-            result = self._query_api.query(query=flux_query, org=self.org)
-            records = []
+        with track_performance("influxdb_query_latest_coins", {"limit": limit}):
+            flux_query = f'''
+                from(bucket: "{self.bucket}")
+                |> range(start: -1d)
+                |> filter(fn: (r) => r._measurement == "cryptocurrency_data")
+                |> last()
+                |> limit(n: {limit})
+            '''
             
-            for table in result:
-                for record in table.records:
-                    records.append({
-                        'time': record.get_time(),
-                        'code': record.values.get('code'),
-                        'field': record.get_field(),
-                        'value': record.get_value()
-                    })
-            
-            logger.info(f"Retrieved {len(records)} latest coin records from InfluxDB")
-            return records
-            
-        except Exception as e:
-            logger.error(f"Failed to query coin data from InfluxDB: {e}")
-            raise
+            try:
+                result = self._query_api.query(query=flux_query, org=self.org)
+                records = []
+                
+                for table in result:
+                    for record in table.records:
+                        records.append({
+                            'time': record.get_time(),
+                            'code': record.values.get('code'),
+                            'field': record.get_field(),
+                            'value': record.get_value()
+                        })
+                
+                logger.info(f"Retrieved {len(records)} latest coin records from InfluxDB")
+                return records
+                
+            except Exception as e:
+                logger.error(f"Failed to query coin data from InfluxDB: {e}")
+                raise
     
     def query_coin_history(
         self, 

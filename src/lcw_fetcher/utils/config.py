@@ -35,6 +35,10 @@ class Config(BaseSettings):
     
     # API rate limiting
     requests_per_minute: int = Field(60, env="REQUESTS_PER_MINUTE")
+
+    # Metrics / Observability
+    enable_metrics: bool = Field(True, env="ENABLE_METRICS")
+    metrics_port: int = Field(9099, env="METRICS_PORT")
     
     @field_validator('log_level')
     @classmethod

@@ -18,7 +18,8 @@ from pathlib import Path
 import click
 from loguru import logger
 
-from .utils import Config, setup_logging
+from .utils import Config, setup_logging, get_performance_stats
+from .utils.cache import get_cache_stats, clear_cache
 from .scheduler import DataScheduler
 from .fetcher import DataFetcher
 
@@ -193,6 +194,139 @@ def config(ctx):
     tracked_coins = config_obj.get_tracked_coins()
     click.echo(f"\n🪙 Tracked Coins ({len(tracked_coins)}):")
     click.echo(f"   {', '.join(tracked_coins)}")
+
+
+@cli.command()
+@click.option('--operation', '-o', help='Show stats for specific operation')
+@click.option('--limit', '-l', type=int, default=100, help='Number of recent operations to analyze')
+@click.pass_context
+def perf_stats(ctx, operation, limit):
+    """Show performance statistics for recent operations"""
+    click.echo("📊 Performance Statistics")
+    click.echo("=" * 50)
+    
+    try:
+        stats = get_performance_stats(operation, limit)
+        
+        if 'error' in stats:
+            click.echo(f"❌ {stats['error']}")
+            return
+            
+        click.echo(f"\n🎯 Operation: {stats['operation']}")
+        click.echo(f"📈 Analyzed Operations: {stats['count']}")
+        click.echo(f"✅ Success Rate: {stats['success_rate']:.1f}%")
+        click.echo(f"\n⏱️ Performance Metrics:")
+        click.echo(f"   Average Duration: {stats['avg_duration']:.2f}s")
+        click.echo(f"   Fastest: {stats['min_duration']:.2f}s")
+        click.echo(f"   Slowest: {stats['max_duration']:.2f}s")
+        click.echo(f"\n⚠️ Performance Issues:")
+        click.echo(f"   Slow Operations (>30s): {stats['slow_operations']}")
+        click.echo(f"   Critical Operations (>60s): {stats['critical_operations']}")
+        
+        if stats['critical_operations'] > 0:
+            click.echo(f"\n🚨 WARNING: {stats['critical_operations']} operations exceeded 60s threshold!")
+        elif stats['slow_operations'] > 0:
+            click.echo(f"\n⚠️ NOTICE: {stats['slow_operations']} operations were slow (>30s)")
+        else:
+            click.echo(f"\n✅ All operations within acceptable performance thresholds")
+            
+    except Exception as e:
+        click.echo(f"❌ Failed to retrieve performance stats: {e}")
+
+
+@cli.command()
+@click.option('--clear', is_flag=True, help='Clear the cache')
+@click.pass_context
+def cache_stats(ctx, clear):
+    """Show cache statistics or clear cache"""
+    if clear:
+        clear_cache()
+        click.echo("✅ Cache cleared successfully")
+        return
+        
+    click.echo("💾 Cache Statistics")
+    click.echo("=" * 50)
+    
+    try:
+        stats = get_cache_stats()
+        
+        if stats['total_requests'] == 0:
+            click.echo("📁 No cache activity yet")
+            return
+            
+        click.echo(f"\n🎯 Cache Performance:")
+        click.echo(f"   Hit Rate: {stats['hit_rate_percent']:.1f}%")
+        click.echo(f"   Total Requests: {stats['total_requests']}")
+        click.echo(f"   Cache Hits: {stats['hits']}")
+        click.echo(f"   Cache Misses: {stats['misses']}")
+        
+        click.echo(f"\n📏 Cache Usage:")
+        click.echo(f"   Current Entries: {stats['cache_size']}")
+        click.echo(f"   Max Capacity: {stats['max_size']}")
+        click.echo(f"   Utilization: {stats['cache_size']/stats['max_size']*100:.1f}%")
+        
+        click.echo(f"\n🗑️ Maintenance:")
+        click.echo(f"   Expired Entries: {stats['expired_entries']}")
+        click.echo(f"   Evicted Entries: {stats['evictions']}")
+        
+        if stats['hit_rate_percent'] > 50:
+            click.echo(f"\n✅ Good cache performance (>{stats['hit_rate_percent']:.0f}% hit rate)")
+        elif stats['hit_rate_percent'] > 20:
+            click.echo(f"\n⚠️ Moderate cache performance ({stats['hit_rate_percent']:.0f}% hit rate)")
+        else:
+            click.echo(f"\n🚨 Low cache performance ({stats['hit_rate_percent']:.0f}% hit rate) - consider tuning TTL")
+            
+    except Exception as e:
+        click.echo(f"❌ Failed to retrieve cache stats: {e}")
+
+
+@cli.command()
+@click.option('--port', '-p', type=int, help='Metrics server port (default from config)')
+@click.pass_context
+def metrics(ctx, port):
+    """Start metrics server or show metrics information"""
+    config = ctx.obj['config']
+    
+    if not config.enable_metrics:
+        click.echo("❌ Metrics are disabled in configuration")
+        click.echo("   Set ENABLE_METRICS=true to enable metrics")
+        return
+    
+    metrics_port = port or config.metrics_port
+    
+    try:
+        from lcw_fetcher.utils.metrics import init_metrics, get_metrics_collector
+        
+        # Initialize metrics if not already done
+        collector = get_metrics_collector()
+        if not collector:
+            collector = init_metrics(enable_metrics=True, port=metrics_port)
+        
+        # Start metrics server
+        collector.start_metrics_server()
+        
+        click.echo(f"📊 Metrics Server Information")
+        click.echo("=" * 50)
+        click.echo(f"✅ Metrics server running on port {metrics_port}")
+        click.echo(f"🌐 Metrics URL: http://localhost:{metrics_port}/metrics")
+        click.echo(f"\n📈 Available Metrics:")
+        click.echo(f"   • lcw_operation_duration_seconds - Operation timing")
+        click.echo(f"   • lcw_api_calls_total - API call counters")
+        click.echo(f"   • lcw_cache_operations_total - Cache hit/miss rates")
+        click.echo(f"   • lcw_fetch_cycles_total - Fetch cycle success/failure")
+        click.echo(f"   • lcw_system_resources - CPU/Memory/Disk usage")
+        click.echo(f"   • lcw_data_points_stored_total - Data storage metrics")
+        
+        click.echo(f"\n💡 Integration Tips:")
+        click.echo(f"   • Add to Prometheus: scrape_configs target localhost:{metrics_port}")
+        click.echo(f"   • Grafana Dashboard: Import metrics with 'lcw_' prefix")
+        click.echo(f"   • Alerts: Set up alerts on lcw_fetch_cycles_total{{status='error'}}")
+        
+    except ImportError:
+        click.echo("❌ Prometheus client not installed")
+        click.echo("   Install with: pip install prometheus_client")
+    except Exception as e:
+        click.echo(f"❌ Failed to start metrics server: {e}")
 
 
 @cli.command()

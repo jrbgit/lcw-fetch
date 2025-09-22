@@ -30,6 +30,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: lcw-data-fetcher
+    ports:
+      - "9099:9099"  # Prometheus metrics port
     depends_on:
       - influxdb
     environment:
@@ -53,6 +55,10 @@ services:
       - ENABLE_SCHEDULER=${ENABLE_SCHEDULER:-true}
       - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-UTC}
       - REQUESTS_PER_MINUTE=${REQUESTS_PER_MINUTE:-30}
+      
+      # Metrics / Observability
+      - ENABLE_METRICS=${ENABLE_METRICS:-true}
+      - METRICS_PORT=${METRICS_PORT:-9099}
     volumes:
       - ./logs:/app/logs
     networks:

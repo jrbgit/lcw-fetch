@@ -2,87 +2,195 @@ import json
 import time
 from typing import Dict, List, Optional, Union, Any
 from datetime import datetime, timedelta
+from enum import Enum
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from loguru import logger
 
 from ..models import Coin, Exchange, Market, CoinHistory
 from .exceptions import LCWAPIError, LCWRateLimitError, LCWAuthError, LCWNetworkError
+from ..utils.cache import api_cache
+
+
+class CircuitBreakerState(Enum):
+    """Circuit breaker states"""
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
+class CircuitBreaker:
+    """Simple circuit breaker implementation"""
+    
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitBreakerState.CLOSED
+    
+    def can_execute(self) -> bool:
+        """Check if request can be executed"""
+        if self.state == CircuitBreakerState.CLOSED:
+            return True
+        elif self.state == CircuitBreakerState.OPEN:
+            if time.time() - self.last_failure_time > self.timeout:
+                self.state = CircuitBreakerState.HALF_OPEN
+                return True
+            return False
+        else:  # HALF_OPEN
+            return True
+    
+    def record_success(self):
+        """Record successful request"""
+        self.failure_count = 0
+        self.state = CircuitBreakerState.CLOSED
+    
+    def record_failure(self):
+        """Record failed request"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitBreakerState.OPEN
+            logger.warning(f"Circuit breaker opened after {self.failure_count} failures")
 
 
 class LCWClient:
-    """Live Coin Watch API client"""
+    """Live Coin Watch API client with enhanced error handling"""
     
     def __init__(
         self, 
         api_key: str, 
         base_url: str = "https://api.livecoinwatch.com",
-        timeout: int = 30,
-        max_retries: int = 3
+        connect_timeout: int = 10,
+        read_timeout: int = 30,
+        max_retries: int = 3,
+        enable_caching: bool = True
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
-        self.timeout = timeout
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+        self.timeout = (connect_timeout, read_timeout)  # (connect, read)
+        self.enable_caching = enable_caching
         
-        # Setup session with retry strategy
+        # Circuit breaker for API health
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=60)
+        
+        # Setup session with enhanced retry strategy
         self.session = requests.Session()
         retry_strategy = Retry(
             total=max_retries,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["POST"]  # LCW API uses POST for everything
+            backoff_factor=2,  # Exponential backoff: 2, 4, 8 seconds
+            status_forcelist=[429, 500, 502, 503, 504, 520, 521, 522, 523, 524],
+            allowed_methods=["POST"],  # LCW API uses POST for everything
+            raise_on_status=False  # Handle status codes manually
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=20
+        )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
         
         # Default headers
         self.session.headers.update({
             'Content-Type': 'application/json',
-            'x-api-key': self.api_key
+            'x-api-key': self.api_key,
+            'User-Agent': 'LCW-DataFetcher/1.0'
         })
     
-    def _make_request(self, endpoint: str, payload: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Make a request to the LCW API"""
+    def _make_request(self, endpoint: str, payload: Dict[str, Any] = None, use_cache: bool = True) -> Dict[str, Any]:
+        """Make a request to the LCW API with circuit breaker, caching, and enhanced error handling"""
+        # Try cache first if enabled
+        if self.enable_caching and use_cache:
+            cached_response = api_cache.get_cached_response(endpoint, payload or {})
+            if cached_response is not None:
+                logger.debug(f"Using cached response for endpoint: {endpoint}")
+                return cached_response
+        
+        # Check circuit breaker
+        if not self.circuit_breaker.can_execute():
+            raise LCWAPIError("Circuit breaker is open - API temporarily unavailable", 503)
+        
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        request_start_time = time.time()
         
         try:
+            logger.debug(f"Making API request to: {endpoint}")
+            
             response = self.session.post(
                 url, 
                 json=payload or {}, 
                 timeout=self.timeout
             )
             
+            request_duration = time.time() - request_start_time
+            logger.debug(f"API request completed in {request_duration:.2f}s")
+            
             # Handle different error cases
             if response.status_code == 401:
+                self.circuit_breaker.record_failure()
                 raise LCWAuthError("Invalid API key", response.status_code)
             elif response.status_code == 429:
+                # Don't count rate limits as circuit breaker failures
+                logger.warning(f"Rate limit hit for endpoint: {endpoint}")
                 raise LCWRateLimitError("API rate limit exceeded", response.status_code)
-            elif response.status_code >= 400:
+            elif response.status_code >= 500:
+                # Server errors count as failures
+                self.circuit_breaker.record_failure()
                 try:
                     error_data = response.json()
                     error_msg = error_data.get('error', {}).get('description', f"HTTP {response.status_code}")
                 except:
-                    error_msg = f"HTTP {response.status_code}"
+                    error_msg = f"Server error: HTTP {response.status_code}"
+                raise LCWAPIError(error_msg, response.status_code)
+            elif response.status_code >= 400:
+                # Client errors don't count as circuit breaker failures
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('error', {}).get('description', f"HTTP {response.status_code}")
+                except:
+                    error_msg = f"Client error: HTTP {response.status_code}"
                 raise LCWAPIError(error_msg, response.status_code)
             
             response.raise_for_status()
-            return response.json()
             
-        except requests.exceptions.Timeout:
-            raise LCWNetworkError("Request timeout")
-        except requests.exceptions.ConnectionError:
-            raise LCWNetworkError("Connection error")
+            # Success - reset circuit breaker
+            self.circuit_breaker.record_success()
+            
+            response_data = response.json()
+            
+            # Cache the response if caching is enabled
+            if self.enable_caching and use_cache and response_data:
+                api_cache.cache_response(endpoint, payload or {}, response_data)
+            
+            return response_data
+            
+        except requests.exceptions.Timeout as e:
+            self.circuit_breaker.record_failure()
+            request_duration = time.time() - request_start_time
+            logger.error(f"Request timeout after {request_duration:.2f}s for endpoint: {endpoint}")
+            raise LCWNetworkError(f"Request timeout ({request_duration:.1f}s) - check network connection")
+        except requests.exceptions.ConnectionError as e:
+            self.circuit_breaker.record_failure()
+            logger.error(f"Connection error for endpoint: {endpoint} - {str(e)}")
+            raise LCWNetworkError(f"Connection error - check network connectivity")
         except requests.exceptions.RequestException as e:
+            self.circuit_breaker.record_failure()
+            logger.error(f"Request failed for endpoint: {endpoint} - {str(e)}")
             raise LCWNetworkError(f"Request failed: {str(e)}")
     
     def check_status(self) -> Dict[str, Any]:
-        """Check API status"""
+        """Check API status (cached for 2 minutes)"""
         return self._make_request('status')
     
     def get_credits(self) -> Dict[str, Any]:
-        """Get remaining API credits"""
+        """Get remaining API credits (cached for 5 minutes)"""
         return self._make_request('credits')
     
     def get_coin_single(self, code: str, currency: str = "USD", meta: bool = True) -> Coin:

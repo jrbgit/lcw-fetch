@@ -12,6 +12,15 @@ from loguru import logger
 from .fetcher import DataFetcher
 from .utils import Config
 
+# Import metrics functions
+try:
+    from .utils.metrics import init_metrics, record_fetch_cycle_metrics
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+    def init_metrics(*args, **kwargs): pass
+    def record_fetch_cycle_metrics(*args, **kwargs): pass
+
 
 class DataScheduler:
     """Scheduler for automated cryptocurrency data fetching"""
@@ -19,6 +28,16 @@ class DataScheduler:
     def __init__(self, config: Config):
         self.config = config
         self.fetcher = DataFetcher(config)
+        
+        # Initialize metrics if enabled
+        if METRICS_AVAILABLE and config.enable_metrics:
+            self.metrics_collector = init_metrics(
+                enable_metrics=config.enable_metrics,
+                port=config.metrics_port
+            )
+            logger.info(f"Metrics enabled on port {config.metrics_port}")
+        else:
+            self.metrics_collector = None
         # Configure scheduler with job defaults including misfire grace time
         job_defaults = {
             'misfire_grace_time': config.job_misfire_grace_time  # Configurable grace time
@@ -124,7 +143,14 @@ class DataScheduler:
         """Wrapper for frequent fetch job (1 minute interval)"""
         logger.info("Starting frequent fetch job")
         try:
+            start_time = time.time()
             stats = self.fetcher.run_full_fetch()
+            duration = time.time() - start_time
+            
+            # Record metrics if available
+            if METRICS_AVAILABLE:
+                record_fetch_cycle_metrics(duration, stats)
+            
             logger.info(f"Frequent fetch completed: {stats}")
         except Exception as e:
             logger.error(f"Frequent fetch job failed: {e}")
@@ -231,6 +257,10 @@ class DataScheduler:
             return
         
         logger.info("Starting data scheduler...")
+        
+        # Start metrics server if enabled
+        if self.metrics_collector:
+            self.metrics_collector.start_metrics_server()
         
         # Add all jobs
         self.add_frequent_fetch_job()  # New 1-minute job

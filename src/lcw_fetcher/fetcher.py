@@ -8,6 +8,7 @@ from .api import LCWClient, LCWAPIError, LCWRateLimitError
 from .database import InfluxDBClient
 from .models import Coin, Exchange, Market
 from .utils import Config
+from .utils.performance_logger import track_performance, log_system_resources
 
 
 class DataFetcher:
@@ -41,76 +42,81 @@ class DataFetcher:
     
     def check_api_status(self) -> bool:
         """Check if the LCW API is accessible"""
-        try:
-            self._rate_limit()
-            status = self.lcw_client.check_status()
-            logger.info("API status check successful")
-            return True
-        except Exception as e:
-            logger.error(f"API status check failed: {e}")
-            return False
+        with track_performance("api_status_check"):
+            try:
+                self._rate_limit()
+                status = self.lcw_client.check_status()
+                logger.info("API status check successful")
+                return True
+            except Exception as e:
+                logger.error(f"API status check failed: {e}")
+                return False
     
     def get_api_credits(self) -> Optional[Dict[str, Any]]:
         """Get remaining API credits"""
-        try:
-            self._rate_limit()
-            credits = self.lcw_client.get_credits()
-            logger.info(f"API credits remaining: {credits.get('dailyCreditsRemaining', 'unknown')}")
-            return credits
-        except Exception as e:
-            logger.error(f"Failed to get API credits: {e}")
-            return None
+        with track_performance("api_credits_check"):
+            try:
+                self._rate_limit()
+                credits = self.lcw_client.get_credits()
+                logger.info(f"API credits remaining: {credits.get('dailyCreditsRemaining', 'unknown')}")
+                return credits
+            except Exception as e:
+                logger.error(f"Failed to get API credits: {e}")
+                return None
     
     def fetch_coins_list(self, limit: Optional[int] = None) -> List[Coin]:
         """Fetch list of coins from the API"""
         if limit is None:
             limit = self.config.max_coins_per_fetch
         
-        coins = []
-        try:
-            self._rate_limit()
-            coins = self.lcw_client.get_coins_list(
-                limit=limit,
-                meta=True
-            )
-            logger.info(f"Fetched {len(coins)} coins from API")
-            return coins
-            
-        except LCWRateLimitError:
-            logger.warning("Rate limit exceeded, backing off")
-            time.sleep(60)  # Wait 1 minute
-            return []
-        except LCWAPIError as e:
-            logger.error(f"API error while fetching coins: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Unexpected error while fetching coins: {e}")
-            return []
-    
-    def fetch_specific_coins(self, coin_codes: List[str]) -> List[Coin]:
-        """Fetch specific coins by their codes"""
-        coins = []
-        
-        for code in coin_codes:
+        with track_performance("fetch_coins_list", {"limit": limit}):
+            coins = []
             try:
                 self._rate_limit()
-                coin = self.lcw_client.get_coin_single(code=code, meta=True)
-                coins.append(coin)
-                logger.debug(f"Fetched data for {code}")
+                coins = self.lcw_client.get_coins_list(
+                    limit=limit,
+                    meta=True
+                )
+                logger.info(f"Fetched {len(coins)} coins from API")
+                return coins
                 
             except LCWRateLimitError:
                 logger.warning("Rate limit exceeded, backing off")
-                time.sleep(60)
-                continue
+                time.sleep(60)  # Wait 1 minute
+                return []
             except LCWAPIError as e:
-                logger.error(f"API error while fetching {code}: {e}")
-                continue
+                logger.error(f"API error while fetching coins: {e}")
+                return []
             except Exception as e:
-                logger.error(f"Unexpected error while fetching {code}: {e}")
-                continue
-        
-        logger.info(f"Fetched data for {len(coins)} specific coins")
-        return coins
+                logger.error(f"Unexpected error while fetching coins: {e}")
+                return []
+    
+    def fetch_specific_coins(self, coin_codes: List[str]) -> List[Coin]:
+        """Fetch specific coins by their codes"""
+        with track_performance("fetch_specific_coins", {"coin_count": len(coin_codes), "coins": coin_codes}):
+            coins = []
+            
+            for code in coin_codes:
+                with track_performance(f"fetch_coin_{code}"):
+                    try:
+                        self._rate_limit()
+                        coin = self.lcw_client.get_coin_single(code=code, meta=True)
+                        coins.append(coin)
+                        logger.debug(f"Fetched data for {code}")
+                        
+                    except LCWRateLimitError:
+                        logger.warning("Rate limit exceeded, backing off")
+                        time.sleep(60)
+                        continue
+                    except LCWAPIError as e:
+                        logger.error(f"API error while fetching {code}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Unexpected error while fetching {code}: {e}")
+                        continue
+            
+            logger.info(f"Fetched data for {len(coins)} specific coins")
+            return coins
     
     def fetch_exchanges_list(self, limit: int = 50) -> List[Exchange]:
         """Fetch list of exchanges from the API"""
@@ -186,15 +192,16 @@ class DataFetcher:
         if not coins:
             return True
         
-        try:
-            with self.db_client as db:
-                db.write_coins(coins)
-            logger.info(f"Stored {len(coins)} coins in database")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to store coins in database: {e}")
-            return False
+        with track_performance("store_coins", {"coin_count": len(coins)}):
+            try:
+                with self.db_client as db:
+                    db.write_coins(coins)
+                logger.info(f"Stored {len(coins)} coins in database")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to store coins in database: {e}")
+                return False
     
     def store_exchanges(self, exchanges: List[Exchange]) -> bool:
         """Store exchange data in the database"""
@@ -229,7 +236,10 @@ class DataFetcher:
     def run_full_fetch(self) -> Dict[str, int]:
         """Run a complete data fetch cycle"""
         logger.info("Starting full fetch cycle")
-        start_time = datetime.utcnow()
+        log_system_resources()  # Log system resources at start
+        
+        with track_performance("full_fetch_cycle"):
+            start_time = datetime.utcnow()
         
         stats = {
             'coins_fetched': 0,
@@ -295,11 +305,12 @@ class DataFetcher:
             else:
                 stats['errors'] += 1
         
-        elapsed = datetime.utcnow() - start_time
-        logger.info(f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds")
-        logger.info(f"Stats: {stats}")
-        
-        return stats
+            elapsed = datetime.utcnow() - start_time
+            logger.info(f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds")
+            logger.info(f"Stats: {stats}")
+            log_system_resources()  # Log system resources at end
+            
+            return stats
     
     def run_full_fetch_with_history(self) -> Dict[str, int]:
         """Run a complete data fetch cycle including 24-hour historical data"""
