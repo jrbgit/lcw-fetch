@@ -47,7 +47,7 @@ services:
       
       # Application Configuration
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - FETCH_INTERVAL_MINUTES=${FETCH_INTERVAL_MINUTES:-1}  # Legacy setting, now uses 1-minute intervals
+      - FETCH_INTERVAL_MINUTES=${FETCH_INTERVAL_MINUTES:-2}  # Legacy setting, now uses 2-minute intervals
       - MAX_COINS_PER_FETCH=${MAX_COINS_PER_FETCH:-50}
       - TRACKED_COINS=${TRACKED_COINS:-BTC,ETH,GLQ}
       

@@ -71,8 +71,8 @@ class DataScheduler:
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     
     def add_frequent_fetch_job(self) -> None:
-        """Add frequent data fetching job (every 1 minute)"""
-        trigger = IntervalTrigger(minutes=1)
+        """Add frequent data fetching job (configurable interval)"""
+        trigger = IntervalTrigger(minutes=self.config.fetch_interval_minutes)
         
         self.scheduler.add_job(
             func=self._frequent_fetch_wrapper,
@@ -84,7 +84,7 @@ class DataScheduler:
             replace_existing=True
         )
         
-        logger.info("Added frequent fetch job (every 1 minute)")
+        logger.info(f"Added frequent fetch job (every {self.config.fetch_interval_minutes} minute(s))")
     
     def add_regular_fetch_job(self) -> None:
         """Add regular data fetching job (configurable interval, now unused)"""
@@ -141,7 +141,7 @@ class DataScheduler:
         logger.info("Added weekly full sync job")
     
     def _frequent_fetch_wrapper(self) -> None:
-        """Wrapper for frequent fetch job (1 minute interval)"""
+        """Wrapper for frequent fetch job (configurable interval)"""
         logger.info("Starting frequent fetch job")
         try:
             start_time = time.time()
