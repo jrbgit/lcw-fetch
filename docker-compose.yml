@@ -25,11 +25,11 @@ services:
       retries: 3
 
   # LCW Data Fetcher Application
-  lcw-fetcher:
+  lcw-fetch:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: lcw-data-fetcher
+    container_name: lcw-fetch-service
     ports:
       - "9099:9099"  # Prometheus metrics port
     depends_on:

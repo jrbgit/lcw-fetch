@@ -95,7 +95,7 @@ python -m lcw_fetcher.main history
 # Build Docker image
 make docker
 # OR:
-docker build -t lcw-api-fetcher .
+docker build -t lcw-fetch .
 
 # Start full stack (app + InfluxDB + Grafana)
 docker-compose up -d

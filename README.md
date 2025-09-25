@@ -1,4 +1,4 @@
-# Live Coin Watch API Data Fetcher
+# LCW-Fetch: Live Coin Watch Data Fetcher
 
 A Python application to fetch cryptocurrency data from the [Live Coin Watch API](https://www.livecoinwatch.com/) and store it in a time series database (InfluxDB) for analysis and monitoring.
 
@@ -26,7 +26,7 @@ A Python application to fetch cryptocurrency data from the [Live Coin Watch API]
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd lcw_api
+   cd lcw-fetch
    ```
 
 2. **Install dependencies:**
@@ -314,7 +314,7 @@ tail -f logs/lcw_fetcher.log
 
 ### Project Structure
 ```
-lcw_api/
+lcw-fetch/
 ├── src/lcw_fetcher/
 │   ├── __init__.py
 │   ├── main.py              # CLI entry point
