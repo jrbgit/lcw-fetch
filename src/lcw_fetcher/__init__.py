@@ -16,10 +16,10 @@ from .utils import Config, setup_logging
 
 __all__ = [
     "LCWClient",
-    "InfluxDBClient", 
+    "InfluxDBClient",
     "Coin",
     "Exchange",
     "Market",
     "Config",
-    "setup_logging"
+    "setup_logging",
 ]

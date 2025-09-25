@@ -1,4 +1,4 @@
-from .coin import Coin, CoinHistory, CoinDelta
+from .coin import Coin, CoinDelta, CoinHistory
 from .exchange import Exchange
 from .market import Market
 

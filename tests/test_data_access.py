@@ -3,9 +3,11 @@
 Simple script to test data access from InfluxDB
 """
 
-import requests
 import json
 from datetime import datetime
+
+import requests
+
 
 def test_influxdb_connection():
     """Test direct connection to InfluxDB"""
@@ -13,9 +15,9 @@ def test_influxdb_connection():
     headers = {
         "Authorization": "Token your_super_secret_admin_token",
         "Content-Type": "application/vnd.flux",
-        "Accept": "application/csv"
+        "Accept": "application/csv",
     }
-    
+
     # Simple query to get recent coin data
     query = """
 from(bucket: "crypto_data")
@@ -24,7 +26,7 @@ from(bucket: "crypto_data")
   |> filter(fn: (r) => r["_field"] == "rate")
   |> limit(n: 10)
 """
-    
+
     try:
         response = requests.post(url, headers=headers, data=query)
         if response.status_code == 200:
@@ -38,6 +40,7 @@ from(bucket: "crypto_data")
     except Exception as e:
         print(f"❌ InfluxDB Connection: ERROR - {e}")
         return False
+
 
 def test_grafana_connection():
     """Test Grafana health"""
@@ -54,13 +57,14 @@ def test_grafana_connection():
         print(f"❌ Grafana Health: ERROR - {e}")
         return False
 
+
 if __name__ == "__main__":
     print(f"🔍 Testing Data Access at {datetime.now()}")
     print("=" * 50)
-    
+
     influx_ok = test_influxdb_connection()
     grafana_ok = test_grafana_connection()
-    
+
     print("=" * 50)
     if influx_ok and grafana_ok:
         print("✅ All systems operational!")

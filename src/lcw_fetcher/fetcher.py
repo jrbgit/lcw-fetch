@@ -1,36 +1,35 @@
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from .api import LCWClient, LCWAPIError, LCWRateLimitError
+from .api import LCWAPIError, LCWClient, LCWRateLimitError
 from .database import InfluxDBClient
 from .models import Coin, Exchange, Market
 from .utils import Config
-from .utils.performance_logger import track_performance, log_system_resources
+from .utils.performance_logger import log_system_resources, track_performance
 
 
 class DataFetcher:
     """Main service for fetching and storing cryptocurrency data"""
-    
+
     def __init__(self, config: Config):
         self.config = config
         self.lcw_client = LCWClient(
-            api_key=config.lcw_api_key,
-            base_url=config.lcw_base_url
+            api_key=config.lcw_api_key, base_url=config.lcw_base_url
         )
         self.db_client = InfluxDBClient(
             url=config.influxdb_url,
             token=config.influxdb_token,
             org=config.influxdb_org,
-            bucket=config.influxdb_bucket
+            bucket=config.influxdb_bucket,
         )
-        
+
         # Rate limiting
         self._last_request_time = 0
         self._request_interval = 60.0 / config.requests_per_minute
-        
+
     def _rate_limit(self) -> None:
         """Implement rate limiting between API requests"""
         elapsed = time.time() - self._last_request_time
@@ -39,7 +38,7 @@ class DataFetcher:
             logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f} seconds")
             time.sleep(sleep_time)
         self._last_request_time = time.time()
-    
+
     def check_api_status(self) -> bool:
         """Check if the LCW API is accessible"""
         with track_performance("api_status_check"):
@@ -51,35 +50,34 @@ class DataFetcher:
             except Exception as e:
                 logger.error(f"API status check failed: {e}")
                 return False
-    
+
     def get_api_credits(self) -> Optional[Dict[str, Any]]:
         """Get remaining API credits"""
         with track_performance("api_credits_check"):
             try:
                 self._rate_limit()
                 credits = self.lcw_client.get_credits()
-                logger.info(f"API credits remaining: {credits.get('dailyCreditsRemaining', 'unknown')}")
+                logger.info(
+                    f"API credits remaining: {credits.get('dailyCreditsRemaining', 'unknown')}"
+                )
                 return credits
             except Exception as e:
                 logger.error(f"Failed to get API credits: {e}")
                 return None
-    
+
     def fetch_coins_list(self, limit: Optional[int] = None) -> List[Coin]:
         """Fetch list of coins from the API"""
         if limit is None:
             limit = self.config.max_coins_per_fetch
-        
+
         with track_performance("fetch_coins_list", {"limit": limit}):
             coins = []
             try:
                 self._rate_limit()
-                coins = self.lcw_client.get_coins_list(
-                    limit=limit,
-                    meta=True
-                )
+                coins = self.lcw_client.get_coins_list(limit=limit, meta=True)
                 logger.info(f"Fetched {len(coins)} coins from API")
                 return coins
-                
+
             except LCWRateLimitError:
                 logger.warning("Rate limit exceeded, backing off")
                 time.sleep(60)  # Wait 1 minute
@@ -90,12 +88,14 @@ class DataFetcher:
             except Exception as e:
                 logger.error(f"Unexpected error while fetching coins: {e}")
                 return []
-    
+
     def fetch_specific_coins(self, coin_codes: List[str]) -> List[Coin]:
         """Fetch specific coins by their codes"""
-        with track_performance("fetch_specific_coins", {"coin_count": len(coin_codes), "coins": coin_codes}):
+        with track_performance(
+            "fetch_specific_coins", {"coin_count": len(coin_codes), "coins": coin_codes}
+        ):
             coins = []
-            
+
             for code in coin_codes:
                 with track_performance(f"fetch_coin_{code}"):
                     try:
@@ -103,7 +103,7 @@ class DataFetcher:
                         coin = self.lcw_client.get_coin_single(code=code, meta=True)
                         coins.append(coin)
                         logger.debug(f"Fetched data for {code}")
-                        
+
                     except LCWRateLimitError:
                         logger.warning("Rate limit exceeded, backing off")
                         time.sleep(60)
@@ -114,10 +114,10 @@ class DataFetcher:
                     except Exception as e:
                         logger.error(f"Unexpected error while fetching {code}: {e}")
                         continue
-            
+
             logger.info(f"Fetched data for {len(coins)} specific coins")
             return coins
-    
+
     def fetch_exchanges_list(self, limit: int = 50) -> List[Exchange]:
         """Fetch list of exchanges from the API"""
         try:
@@ -125,7 +125,7 @@ class DataFetcher:
             exchanges = self.lcw_client.get_exchanges_list(limit=limit)
             logger.info(f"Fetched {len(exchanges)} exchanges from API")
             return exchanges
-            
+
         except LCWRateLimitError:
             logger.warning("Rate limit exceeded while fetching exchanges")
             time.sleep(60)
@@ -136,7 +136,7 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Unexpected error while fetching exchanges: {e}")
             return []
-    
+
     def fetch_market_overview(self) -> List[Market]:
         """Fetch market overview data"""
         try:
@@ -144,7 +144,7 @@ class DataFetcher:
             markets = self.lcw_client.get_overview()
             logger.info(f"Fetched {len(markets)} market overview records")
             return markets
-            
+
         except LCWRateLimitError:
             logger.warning("Rate limit exceeded while fetching market overview")
             time.sleep(60)
@@ -155,27 +155,22 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Unexpected error while fetching market overview: {e}")
             return []
-    
-    def fetch_coin_history(
-        self, 
-        code: str, 
-        hours_back: int = 24
-    ) -> Optional[Coin]:
+
+    def fetch_coin_history(self, code: str, hours_back: int = 24) -> Optional[Coin]:
         """Fetch historical data for a specific coin"""
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(hours=hours_back)
-        
+
         try:
             self._rate_limit()
             coin_with_history = self.lcw_client.get_coin_history(
-                code=code,
-                start=start_time,
-                end=end_time,
-                meta=True
+                code=code, start=start_time, end=end_time, meta=True
             )
-            logger.info(f"Fetched {len(coin_with_history.history)} historical records for {code}")
+            logger.info(
+                f"Fetched {len(coin_with_history.history)} historical records for {code}"
+            )
             return coin_with_history
-            
+
         except LCWRateLimitError:
             logger.warning(f"Rate limit exceeded while fetching history for {code}")
             time.sleep(60)
@@ -186,201 +181,207 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Unexpected error while fetching history for {code}: {e}")
             return None
-    
+
     def store_coins(self, coins: List[Coin]) -> bool:
         """Store coin data in the database"""
         if not coins:
             return True
-        
+
         with track_performance("store_coins", {"coin_count": len(coins)}):
             try:
                 with self.db_client as db:
                     db.write_coins(coins)
                 logger.info(f"Stored {len(coins)} coins in database")
                 return True
-                
+
             except Exception as e:
                 logger.error(f"Failed to store coins in database: {e}")
                 return False
-    
+
     def store_exchanges(self, exchanges: List[Exchange]) -> bool:
         """Store exchange data in the database"""
         if not exchanges:
             return True
-        
+
         try:
             with self.db_client as db:
                 db.write_exchanges(exchanges)
             logger.info(f"Stored {len(exchanges)} exchanges in database")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to store exchanges in database: {e}")
             return False
-    
+
     def store_markets(self, markets: List[Market]) -> bool:
         """Store market data in the database"""
         if not markets:
             return True
-        
+
         try:
             with self.db_client as db:
                 db.write_markets(markets)
             logger.info(f"Stored {len(markets)} market records in database")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to store market data in database: {e}")
             return False
-    
+
     def run_full_fetch(self) -> Dict[str, int]:
         """Run a complete data fetch cycle"""
         logger.info("Starting full fetch cycle")
         log_system_resources()  # Log system resources at start
-        
+
         with track_performance("full_fetch_cycle"):
             start_time = datetime.utcnow()
-        
+
         stats = {
-            'coins_fetched': 0,
-            'coins_stored': 0,
-            'exchanges_fetched': 0,
-            'exchanges_stored': 0,
-            'markets_fetched': 0,
-            'markets_stored': 0,
-            'historical_fetched': 0,
-            'historical_stored': 0,
-            'errors': 0
+            "coins_fetched": 0,
+            "coins_stored": 0,
+            "exchanges_fetched": 0,
+            "exchanges_stored": 0,
+            "markets_fetched": 0,
+            "markets_stored": 0,
+            "historical_fetched": 0,
+            "historical_stored": 0,
+            "errors": 0,
         }
-        
+
         # Check API status first
         if not self.check_api_status():
             logger.error("API is not available, skipping fetch cycle")
-            stats['errors'] += 1
+            stats["errors"] += 1
             return stats
-        
+
         # Get API credits
         credits = self.get_api_credits()
-        if credits and credits.get('dailyCreditsRemaining', 0) < 10:
-            logger.warning("Low API credits remaining, consider reducing fetch frequency")
-        
+        if credits and credits.get("dailyCreditsRemaining", 0) < 10:
+            logger.warning(
+                "Low API credits remaining, consider reducing fetch frequency"
+            )
+
         # Fetch tracked coins specifically
         tracked_coins = self.config.get_tracked_coins()
         if tracked_coins:
             coins = self.fetch_specific_coins(tracked_coins)
-            stats['coins_fetched'] = len(coins)
-            
+            stats["coins_fetched"] = len(coins)
+
             if self.store_coins(coins):
-                stats['coins_stored'] = len(coins)
+                stats["coins_stored"] = len(coins)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch top coins list
         top_coins = self.fetch_coins_list(limit=20)  # Just top 20 for regular updates
         if top_coins:
-            stats['coins_fetched'] += len(top_coins)
-            
+            stats["coins_fetched"] += len(top_coins)
+
             if self.store_coins(top_coins):
-                stats['coins_stored'] += len(top_coins)
+                stats["coins_stored"] += len(top_coins)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch exchanges (less frequently)
         exchanges = self.fetch_exchanges_list(limit=20)
         if exchanges:
-            stats['exchanges_fetched'] = len(exchanges)
-            
+            stats["exchanges_fetched"] = len(exchanges)
+
             if self.store_exchanges(exchanges):
-                stats['exchanges_stored'] = len(exchanges)
+                stats["exchanges_stored"] = len(exchanges)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch market overview
         markets = self.fetch_market_overview()
         if markets:
-            stats['markets_fetched'] = len(markets)
-            
+            stats["markets_fetched"] = len(markets)
+
             if self.store_markets(markets):
-                stats['markets_stored'] = len(markets)
+                stats["markets_stored"] = len(markets)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
             elapsed = datetime.utcnow() - start_time
-            logger.info(f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds")
+            logger.info(
+                f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds"
+            )
             logger.info(f"Stats: {stats}")
             log_system_resources()  # Log system resources at end
-            
+
             return stats
-    
+
     def run_full_fetch_with_history(self) -> Dict[str, int]:
         """Run a complete data fetch cycle including 24-hour historical data"""
         logger.info("Starting full fetch cycle with historical data")
         start_time = datetime.utcnow()
-        
+
         stats = {
-            'coins_fetched': 0,
-            'coins_stored': 0,
-            'exchanges_fetched': 0,
-            'exchanges_stored': 0,
-            'markets_fetched': 0,
-            'markets_stored': 0,
-            'historical_fetched': 0,
-            'historical_stored': 0,
-            'errors': 0
+            "coins_fetched": 0,
+            "coins_stored": 0,
+            "exchanges_fetched": 0,
+            "exchanges_stored": 0,
+            "markets_fetched": 0,
+            "markets_stored": 0,
+            "historical_fetched": 0,
+            "historical_stored": 0,
+            "errors": 0,
         }
-        
+
         # Check API status first
         if not self.check_api_status():
             logger.error("API is not available, skipping fetch cycle")
-            stats['errors'] += 1
+            stats["errors"] += 1
             return stats
-        
+
         # Get API credits
         credits = self.get_api_credits()
-        if credits and credits.get('dailyCreditsRemaining', 0) < 20:
-            logger.warning("Low API credits remaining, consider reducing fetch frequency")
-        
+        if credits and credits.get("dailyCreditsRemaining", 0) < 20:
+            logger.warning(
+                "Low API credits remaining, consider reducing fetch frequency"
+            )
+
         # Fetch tracked coins specifically
         tracked_coins = self.config.get_tracked_coins()
         if tracked_coins:
             coins = self.fetch_specific_coins(tracked_coins)
-            stats['coins_fetched'] = len(coins)
-            
+            stats["coins_fetched"] = len(coins)
+
             if self.store_coins(coins):
-                stats['coins_stored'] = len(coins)
+                stats["coins_stored"] = len(coins)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch top coins list
         top_coins = self.fetch_coins_list(limit=20)  # Just top 20 for regular updates
         if top_coins:
-            stats['coins_fetched'] += len(top_coins)
-            
+            stats["coins_fetched"] += len(top_coins)
+
             if self.store_coins(top_coins):
-                stats['coins_stored'] += len(top_coins)
+                stats["coins_stored"] += len(top_coins)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch exchanges (less frequently)
         exchanges = self.fetch_exchanges_list(limit=20)
         if exchanges:
-            stats['exchanges_fetched'] = len(exchanges)
-            
+            stats["exchanges_fetched"] = len(exchanges)
+
             if self.store_exchanges(exchanges):
-                stats['exchanges_stored'] = len(exchanges)
+                stats["exchanges_stored"] = len(exchanges)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # Fetch market overview
         markets = self.fetch_market_overview()
         if markets:
-            stats['markets_fetched'] = len(markets)
-            
+            stats["markets_fetched"] = len(markets)
+
             if self.store_markets(markets):
-                stats['markets_stored'] = len(markets)
+                stats["markets_stored"] = len(markets)
             else:
-                stats['errors'] += 1
-        
+                stats["errors"] += 1
+
         # NEW: Fetch 24-hour historical data for tracked coins
         logger.info("Fetching 24-hour historical data for tracked coins...")
         if tracked_coins:
@@ -388,52 +389,74 @@ class DataFetcher:
                 try:
                     # Check remaining API credits before each historical fetch
                     credits = self.get_api_credits()
-                    if credits and credits.get('dailyCreditsRemaining', 0) < 5:
-                        logger.warning(f"Low API credits ({credits.get('dailyCreditsRemaining', 0)}), skipping historical fetch for {coin_code}")
+                    if credits and credits.get("dailyCreditsRemaining", 0) < 5:
+                        logger.warning(
+                            f"Low API credits ({credits.get('dailyCreditsRemaining', 0)}), skipping historical fetch for {coin_code}"
+                        )
                         break
-                    
+
                     logger.info(f"Fetching 24-hour history for {coin_code}...")
-                    coin_with_history = self.fetch_coin_history(coin_code, hours_back=24)
-                    
+                    coin_with_history = self.fetch_coin_history(
+                        coin_code, hours_back=24
+                    )
+
                     if coin_with_history and coin_with_history.history:
-                        stats['historical_fetched'] += len(coin_with_history.history)
-                        logger.info(f"Retrieved {len(coin_with_history.history)} historical points for {coin_code}")
-                        
+                        stats["historical_fetched"] += len(coin_with_history.history)
+                        logger.info(
+                            f"Retrieved {len(coin_with_history.history)} historical points for {coin_code}"
+                        )
+
                         # Store historical data points as individual coin records
                         historical_coins_stored = 0
                         for hist_point in coin_with_history.history:
                             try:
                                 # Create a coin record for each historical point
-                                historical_coin = coin_with_history.model_copy(deep=True)
+                                historical_coin = coin_with_history.model_copy(
+                                    deep=True
+                                )
                                 historical_coin.rate = hist_point.rate
                                 historical_coin.volume = hist_point.volume
                                 historical_coin.cap = hist_point.cap
-                                historical_coin.fetched_at = datetime.fromtimestamp(hist_point.date / 1000)
-                                historical_coin.history = []  # Clear history to avoid recursion
-                                
+                                historical_coin.fetched_at = datetime.fromtimestamp(
+                                    hist_point.date / 1000
+                                )
+                                historical_coin.history = (
+                                    []
+                                )  # Clear history to avoid recursion
+
                                 if self.store_coins([historical_coin]):
                                     historical_coins_stored += 1
                                 else:
-                                    logger.warning(f"Failed to store historical point for {coin_code} at {historical_coin.fetched_at}")
+                                    logger.warning(
+                                        f"Failed to store historical point for {coin_code} at {historical_coin.fetched_at}"
+                                    )
                             except Exception as e:
-                                logger.error(f"Error processing historical point for {coin_code}: {e}")
-                                stats['errors'] += 1
-                        
-                        stats['historical_stored'] += historical_coins_stored
-                        logger.info(f"Stored {historical_coins_stored} historical records for {coin_code}")
+                                logger.error(
+                                    f"Error processing historical point for {coin_code}: {e}"
+                                )
+                                stats["errors"] += 1
+
+                        stats["historical_stored"] += historical_coins_stored
+                        logger.info(
+                            f"Stored {historical_coins_stored} historical records for {coin_code}"
+                        )
                     else:
                         logger.warning(f"No historical data retrieved for {coin_code}")
-                        
+
                 except Exception as e:
-                    logger.error(f"Failed to fetch historical data for {coin_code}: {e}")
-                    stats['errors'] += 1
-        
+                    logger.error(
+                        f"Failed to fetch historical data for {coin_code}: {e}"
+                    )
+                    stats["errors"] += 1
+
         elapsed = datetime.utcnow() - start_time
-        logger.info(f"Full fetch cycle with history completed in {elapsed.total_seconds():.2f} seconds")
+        logger.info(
+            f"Full fetch cycle with history completed in {elapsed.total_seconds():.2f} seconds"
+        )
         logger.info(f"Stats: {stats}")
-        
+
         return stats
-    
+
     def connect(self) -> None:
         """Connect to database"""
         try:
@@ -442,32 +465,32 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")
             raise
-    
+
     def fetch_and_store_coins(self) -> bool:
         """Fetch and store coin data"""
         coins = self.fetch_coins_list()
         if coins:
             return self.store_coins(coins)
         return True
-    
+
     def fetch_and_store_exchanges(self) -> bool:
         """Fetch and store exchange data"""
         exchanges = self.fetch_exchanges_list()
         if exchanges:
             return self.store_exchanges(exchanges)
         return True
-    
+
     def fetch_and_store_market_overview(self) -> bool:
         """Fetch and store market overview data"""
         markets = self.fetch_market_overview()
         if markets:
             return self.store_markets(markets)
         return True
-    
+
     def close(self) -> None:
         """Close all connections"""
         if self.lcw_client:
             self.lcw_client.close()
-        if hasattr(self.db_client, 'close'):
+        if hasattr(self.db_client, "close"):
             self.db_client.disconnect()
         # db_client closes automatically when used as context manager

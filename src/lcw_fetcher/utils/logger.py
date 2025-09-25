@@ -1,26 +1,27 @@
 import os
 import sys
 from pathlib import Path
+
 from loguru import logger
 
 
 def setup_logging(log_level: str = "INFO", log_dir: str = "logs") -> None:
     """Setup logging configuration with loguru"""
-    
+
     # Remove default handler
     logger.remove()
-    
+
     # Ensure log directory exists
     Path(log_dir).mkdir(exist_ok=True)
-    
+
     # Console handler with colors
     logger.add(
         sys.stderr,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         level=log_level,
-        colorize=True
+        colorize=True,
     )
-    
+
     # File handler for general logs
     logger.add(
         os.path.join(log_dir, "lcw_fetcher.log"),
@@ -28,9 +29,9 @@ def setup_logging(log_level: str = "INFO", log_dir: str = "logs") -> None:
         level=log_level,
         rotation="10 MB",
         retention="30 days",
-        compression="gz"
+        compression="gz",
     )
-    
+
     # File handler for errors only
     logger.add(
         os.path.join(log_dir, "errors.log"),
@@ -38,9 +39,9 @@ def setup_logging(log_level: str = "INFO", log_dir: str = "logs") -> None:
         level="ERROR",
         rotation="10 MB",
         retention="30 days",
-        compression="gz"
+        compression="gz",
     )
-    
+
     # File handler for API calls (debug level)
     logger.add(
         os.path.join(log_dir, "api_calls.log"),
@@ -49,8 +50,8 @@ def setup_logging(log_level: str = "INFO", log_dir: str = "logs") -> None:
         filter=lambda record: "api" in record.get("name", "").lower(),
         rotation="10 MB",
         retention="7 days",
-        compression="gz"
+        compression="gz",
     )
-    
+
     logger.info(f"Logging configured with level: {log_level}")
     logger.info(f"Log files will be stored in: {Path(log_dir).resolve()}")
