@@ -60,7 +60,7 @@ class SimpleCache:
     def _generate_key(self, key_parts: tuple) -> str:
         """Generate cache key from parts"""
         key_str = str(key_parts)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
     
     def _evict_lru(self):
         """Evict least recently used entry"""
