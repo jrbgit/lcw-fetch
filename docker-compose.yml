@@ -29,6 +29,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        USER_ID: 1000
+        GROUP_ID: 1000
     container_name: lcw-fetch-service
     ports:
       - "9099:9099"  # Prometheus metrics port

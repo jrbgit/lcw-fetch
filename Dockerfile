@@ -29,12 +29,18 @@ COPY README.md .
 # Install the application
 RUN pip install -e .
 
-# Create logs directory
+# Create logs directory with proper permissions
 RUN mkdir -p /app/logs
 
-# Create non-root user
-RUN groupadd -r lcwuser && useradd -r -g lcwuser lcwuser
+# Create non-root user with same UID/GID as host user
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+RUN groupadd -g ${GROUP_ID} lcwuser && useradd -u ${USER_ID} -g lcwuser lcwuser
+
+# Change ownership of the app directory to the user
 RUN chown -R lcwuser:lcwuser /app
+
+# Switch to non-root user
 USER lcwuser
 
 # Health check
