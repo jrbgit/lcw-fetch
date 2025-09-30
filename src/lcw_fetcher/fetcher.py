@@ -89,6 +89,51 @@ class DataFetcher:
                 logger.error(f"Unexpected error while fetching coins: {e}")
                 return []
 
+    def fetch_coins_list_paginated(self) -> List[Coin]:
+        """Fetch multiple pages of coins from the API with pagination"""
+        all_coins = []
+        total_pages = self.config.coins_list_pages
+        coins_per_page = self.config.coins_per_page
+        
+        logger.info(f"Starting paginated fetch: {total_pages} pages of {coins_per_page} coins each")
+        
+        with track_performance("fetch_coins_list_paginated", {
+            "total_pages": total_pages, 
+            "coins_per_page": coins_per_page
+        }):
+            for page in range(total_pages):
+                offset = page * coins_per_page
+                logger.info(f"Fetching page {page + 1}/{total_pages} (offset: {offset}, limit: {coins_per_page})")
+                
+                try:
+                    self._rate_limit()
+                    page_coins = self.lcw_client.get_coins_list(
+                        limit=coins_per_page, 
+                        offset=offset, 
+                        meta=False  # Disable meta to reduce response size
+                    )
+                    
+                    if page_coins:
+                        all_coins.extend(page_coins)
+                        logger.info(f"Page {page + 1}: fetched {len(page_coins)} coins")
+                    else:
+                        logger.warning(f"Page {page + 1}: no coins returned")
+                        break  # No more coins available
+
+                except LCWRateLimitError:
+                    logger.warning(f"Rate limit exceeded on page {page + 1}, backing off")
+                    time.sleep(60)
+                    continue
+                except LCWAPIError as e:
+                    logger.error(f"API error on page {page + 1}: {e}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Unexpected error on page {page + 1}: {e}")
+                    continue
+
+        logger.info(f"Paginated fetch completed: {len(all_coins)} total coins fetched")
+        return all_coins
+
     def fetch_specific_coins(self, coin_codes: List[str]) -> List[Coin]:
         """Fetch specific coins by their codes"""
         with track_performance(
@@ -267,18 +312,18 @@ class DataFetcher:
             coins = self.fetch_specific_coins(tracked_coins)
             stats["coins_fetched"] = len(coins)
 
-            if self.store_coins(coins):
+            if coins and self.store_coins(coins):
                 stats["coins_stored"] = len(coins)
             else:
                 stats["errors"] += 1
 
-        # Fetch top coins list
-        top_coins = self.fetch_coins_list(limit=20)  # Just top 20 for regular updates
-        if top_coins:
-            stats["coins_fetched"] += len(top_coins)
+        # Fetch paginated coins list (UPDATED: Now uses pagination with 100 coins per page)
+        paginated_coins = self.fetch_coins_list_paginated()
+        if paginated_coins:
+            stats["coins_fetched"] += len(paginated_coins)
 
-            if self.store_coins(top_coins):
-                stats["coins_stored"] += len(top_coins)
+            if self.store_coins(paginated_coins):
+                stats["coins_stored"] += len(paginated_coins)
             else:
                 stats["errors"] += 1
 
@@ -302,15 +347,14 @@ class DataFetcher:
             else:
                 stats["errors"] += 1
 
-            elapsed = datetime.utcnow() - start_time
-            logger.info(
-                f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds"
-            )
-            logger.info(f"Stats: {stats}")
-            log_system_resources()  # Log system resources at end
+        elapsed = datetime.utcnow() - start_time
+        logger.info(
+            f"Full fetch cycle completed in {elapsed.total_seconds():.2f} seconds"
+        )
+        logger.info(f"Stats: {stats}")
+        log_system_resources()  # Log system resources at end
 
-            return stats
-
+        return stats
     def run_full_fetch_with_history(self) -> Dict[str, int]:
         """Run a complete data fetch cycle including 24-hour historical data"""
         logger.info("Starting full fetch cycle with historical data")

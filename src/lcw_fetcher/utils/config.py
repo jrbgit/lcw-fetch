@@ -31,6 +31,10 @@ class Config(BaseSettings):
     # Coins to track (comma-separated)
     tracked_coins: str = Field("BTC,ETH,GLQ", env="TRACKED_COINS")
 
+    # Coins list pagination settings
+    coins_list_pages: int = Field(2, env="COINS_LIST_PAGES")
+    coins_per_page: int = Field(100, env="COINS_PER_PAGE")
+
     # Scheduling settings
     enable_scheduler: bool = Field(True, env="ENABLE_SCHEDULER")
     scheduler_timezone: str = Field("UTC", env="SCHEDULER_TIMEZONE")
@@ -65,6 +69,20 @@ class Config(BaseSettings):
             raise ValueError("Max coins per fetch must be between 1 and 1000")
         return v
 
+    @field_validator("coins_list_pages")
+    @classmethod
+    def validate_coins_list_pages(cls, v):
+        if v < 1 or v > 10:
+            raise ValueError("Coins list pages must be between 1 and 10")
+        return v
+
+    @field_validator("coins_per_page")
+    @classmethod
+    def validate_coins_per_page(cls, v):
+        if v < 10 or v > 500:
+            raise ValueError("Coins per page must be between 10 and 500")
+        return v
+
     @field_validator("job_misfire_grace_time")
     @classmethod
     def validate_grace_time(cls, v):
@@ -81,6 +99,10 @@ class Config(BaseSettings):
             for coin in self.tracked_coins.split(",")
             if coin.strip()
         ]
+
+    def get_total_coins_to_fetch(self) -> int:
+        """Get total number of coins to fetch across all pages"""
+        return self.coins_list_pages * self.coins_per_page
 
     model_config = {
         "env_file": ".env",
