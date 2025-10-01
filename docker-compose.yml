@@ -41,24 +41,26 @@ services:
       # Live Coin Watch API
       - LCW_API_KEY=${LCW_API_KEY}
       - LCW_BASE_URL=https://api.livecoinwatch.com
-      
+
       # InfluxDB Configuration
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN:-your_super_secret_admin_token}
       - INFLUXDB_ORG=${INFLUXDB_ORG:-cryptocurrency}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-crypto_data}
-      
+
       # Application Configuration
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FETCH_INTERVAL_MINUTES=${FETCH_INTERVAL_MINUTES:-2}  # Legacy setting, now uses 2-minute intervals
       - MAX_COINS_PER_FETCH=${MAX_COINS_PER_FETCH:-50}
       - TRACKED_COINS=${TRACKED_COINS:-BTC,ETH,GLQ}
-      
+      - COINS_LIST_PAGES=${COINS_LIST_PAGES:-10}
+      - COINS_PER_PAGE=${COINS_PER_PAGE:-100}
+
       # Scheduling
       - ENABLE_SCHEDULER=${ENABLE_SCHEDULER:-true}
       - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-UTC}
       - REQUESTS_PER_MINUTE=${REQUESTS_PER_MINUTE:-30}
-      
+
       # Metrics / Observability
       - ENABLE_METRICS=${ENABLE_METRICS:-true}
       - METRICS_PORT=${METRICS_PORT:-9099}
