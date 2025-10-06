@@ -307,15 +307,18 @@ class DataFetcher:
             )
 
         # Fetch tracked coins specifically
-        tracked_coins = self.config.get_tracked_coins()
-        if tracked_coins:
-            coins = self.fetch_specific_coins(tracked_coins)
-            stats["coins_fetched"] = len(coins)
-
-            if coins and self.store_coins(coins):
-                stats["coins_stored"] = len(coins)
-            else:
-                stats["errors"] += 1
+        # NOTE: Tracked coins are already included in the paginated fetch of top 1000 coins
+        # Skipping individual tracked coins fetch to avoid redundant API calls
+        logger.info("Skipping individual tracked coins fetch - already included in paginated batch")
+        # tracked_coins = self.config.get_tracked_coins()
+        # if tracked_coins:
+        #     coins = self.fetch_specific_coins(tracked_coins)
+        #     stats["coins_fetched"] = len(coins)
+        # 
+        #     if coins and self.store_coins(coins):
+        #         stats["coins_stored"] = len(coins)
+        #     else:
+        #         stats["errors"] += 1
 
         # Fetch paginated coins list (UPDATED: Now uses pagination with 100 coins per page)
         paginated_coins = self.fetch_coins_list_paginated()
@@ -386,15 +389,18 @@ class DataFetcher:
             )
 
         # Fetch tracked coins specifically
-        tracked_coins = self.config.get_tracked_coins()
-        if tracked_coins:
-            coins = self.fetch_specific_coins(tracked_coins)
-            stats["coins_fetched"] = len(coins)
-
-            if self.store_coins(coins):
-                stats["coins_stored"] = len(coins)
-            else:
-                stats["errors"] += 1
+        # NOTE: Tracked coins are already included in the paginated fetch of top 1000 coins
+        # Skipping individual tracked coins fetch to avoid redundant API calls
+        logger.info("Skipping individual tracked coins fetch - already included in paginated batch")
+        # tracked_coins = self.config.get_tracked_coins()
+        # if tracked_coins:
+        #     coins = self.fetch_specific_coins(tracked_coins)
+        #     stats["coins_fetched"] = len(coins)
+        # 
+        #     if coins and self.store_coins(coins):
+        #         stats["coins_stored"] = len(coins)
+        #     else:
+        #         stats["errors"] += 1
 
         # Fetch top coins list
         top_coins = self.fetch_coins_list(limit=20)  # Just top 20 for regular updates
