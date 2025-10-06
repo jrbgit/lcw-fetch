@@ -43,9 +43,10 @@ RUN chown -R lcwuser:lcwuser /app
 # Switch to non-root user
 USER lcwuser
 
+
 # Health check
-HEALTHCHECK --interval=60s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -m lcw_fetcher.main status || exit 1
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:9099/metrics || exit 1
 
 # Default command
 CMD ["python", "-m", "lcw_fetcher.main", "start"]

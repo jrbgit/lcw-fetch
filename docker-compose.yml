@@ -70,10 +70,11 @@ services:
       - lcw-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-m", "lcw_fetcher.main", "status"]
+      test: ["CMD", "curl", "-f", "http://localhost:9099/metrics"]
       interval: 60s
-      timeout: 30s
+      timeout: 10s
       retries: 3
+      start_period: 30s
 
   # Grafana for data visualization (optional)
   grafana:
