@@ -8,6 +8,7 @@ performance bottlenecks in the data fetching pipeline.
 import functools
 import logging
 import time
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -238,11 +239,19 @@ def log_system_resources():
         disk = psutil.disk_usage(".")
         disk_percent = (disk.used / disk.total) * 100
 
+
+        # Thread count
+        active_threads = threading.active_count()
+        try:
+            import os
+            process_threads = len(os.listdir(f"/proc/{os.getpid()}/task"))
+        except:
+            process_threads = active_threads
         logger.info(
             f"📊 System Resources - "
             f"CPU: {cpu_percent}% | "
             f"Memory: {memory_percent}% ({memory_available_gb:.1f}GB available) | "
-            f"Disk: {disk_percent:.1f}%"
+            f"Disk: {disk_percent:.1f}% | Threads: {active_threads}/{process_threads}"
         )
 
         # Record to Prometheus metrics if available

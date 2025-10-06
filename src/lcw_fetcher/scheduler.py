@@ -6,6 +6,7 @@ from typing import Optional
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from loguru import logger
@@ -47,9 +48,15 @@ class DataScheduler:
         job_defaults = {
             "misfire_grace_time": config.job_misfire_grace_time  # Configurable grace time
         }
+
+        # Configure executors with limited thread pool to prevent thread leaks
+        executors = {
+            'default': ThreadPoolExecutor(max_workers=2)  # Limit concurrent job threads
+        }
         self.scheduler = BlockingScheduler(
-            timezone=config.scheduler_timezone, job_defaults=job_defaults
+            timezone=config.scheduler_timezone, job_defaults=job_defaults, executors=executors
         )
+        logger.info("Scheduler configured with ThreadPoolExecutor (max_workers=2)")
         self._setup_signal_handlers()
         self._setup_job_listeners()
 

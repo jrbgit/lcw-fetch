@@ -93,7 +93,7 @@ class LCWClient:
             raise_on_status=False,  # Handle status codes manually
         )
         adapter = HTTPAdapter(
-            max_retries=retry_strategy, pool_connections=10, pool_maxsize=20
+            max_retries=retry_strategy, pool_connections=2, pool_maxsize=5
         )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
