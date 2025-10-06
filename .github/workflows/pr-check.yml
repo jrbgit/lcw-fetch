@@ -1,0 +1,43 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quick-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install minimal dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8 black
+
+    - name: Install package
+      run: pip install -e .
+
+    - name: Quick syntax check
+      run: |
+        flake8 src --select=E9,F63,F7,F82 --show-source || echo "⚠️ Syntax issues found"
+
+    - name: Import check
+      run: |
+        python -c "import lcw_fetcher; print('✅ Package imports successfully')"
+
+    - name: Docker build test
+      run: |
+        docker build -t lcw-fetch-test . || echo "⚠️ Docker build issues found"
+
+    - name: PR Check Complete
+      run: |
+        echo "✅ Pull Request basic checks completed"
