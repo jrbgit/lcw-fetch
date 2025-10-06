@@ -8,7 +8,7 @@ from .api import LCWAPIError, LCWClient, LCWRateLimitError
 from .database import InfluxDBClient
 from .models import Coin, Exchange, Market
 from .utils import Config
-from .utils.performance_logger import log_system_resources, track_performance
+from .utils.performance_logger import log_system_resources, track_performance, PerformanceContext
 
 
 class DataFetcher:
@@ -41,7 +41,7 @@ class DataFetcher:
 
     def check_api_status(self) -> bool:
         """Check if the LCW API is accessible"""
-        with track_performance("api_status_check"):
+        with PerformanceContext("api_status_check"):
             try:
                 self._rate_limit()
                 status = self.lcw_client.check_status()
@@ -53,7 +53,7 @@ class DataFetcher:
 
     def get_api_credits(self) -> Optional[Dict[str, Any]]:
         """Get remaining API credits"""
-        with track_performance("api_credits_check"):
+        with PerformanceContext("api_credits_check"):
             try:
                 self._rate_limit()
                 credits = self.lcw_client.get_credits()
@@ -70,7 +70,7 @@ class DataFetcher:
         if limit is None:
             limit = self.config.max_coins_per_fetch
 
-        with track_performance("fetch_coins_list", {"limit": limit}):
+        with PerformanceContext("fetch_coins_list", {"limit": limit}):
             coins = []
             try:
                 self._rate_limit()
@@ -97,7 +97,7 @@ class DataFetcher:
         
         logger.info(f"Starting paginated fetch: {total_pages} pages of {coins_per_page} coins each")
         
-        with track_performance("fetch_coins_list_paginated", {
+        with PerformanceContext("fetch_coins_list_paginated", {
             "total_pages": total_pages, 
             "coins_per_page": coins_per_page
         }):
@@ -136,13 +136,13 @@ class DataFetcher:
 
     def fetch_specific_coins(self, coin_codes: List[str]) -> List[Coin]:
         """Fetch specific coins by their codes"""
-        with track_performance(
+        with PerformanceContext(
             "fetch_specific_coins", {"coin_count": len(coin_codes), "coins": coin_codes}
         ):
             coins = []
 
             for code in coin_codes:
-                with track_performance(f"fetch_coin_{code}"):
+                with PerformanceContext(f"fetch_coin_{code}"):
                     try:
                         self._rate_limit()
                         coin = self.lcw_client.get_coin_single(code=code, meta=True)
@@ -232,7 +232,7 @@ class DataFetcher:
         if not coins:
             return True
 
-        with track_performance("store_coins", {"coin_count": len(coins)}):
+        with PerformanceContext("store_coins", {"coin_count": len(coins)}):
             try:
                 with self.db_client as db:
                     db.write_coins(coins)
@@ -278,7 +278,7 @@ class DataFetcher:
         logger.info("Starting full fetch cycle")
         log_system_resources()  # Log system resources at start
 
-        with track_performance("full_fetch_cycle"):
+        with PerformanceContext("full_fetch_cycle"):
             start_time = datetime.utcnow()
 
         stats = {
@@ -538,9 +538,23 @@ class DataFetcher:
         return True
 
     def close(self) -> None:
-        """Close all connections"""
+        """Close all connections with proper cleanup"""
+        logger.info("Closing data fetcher connections...")
+        
         if self.lcw_client:
-            self.lcw_client.close()
-        if hasattr(self.db_client, "close"):
-            self.db_client.disconnect()
-        # db_client closes automatically when used as context manager
+            try:
+                self.lcw_client.close()
+                logger.info("HTTP client closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing HTTP client: {e}")
+        
+        if self.db_client:
+            try:
+                # Force disconnect to clean up threads
+                if hasattr(self.db_client, "disconnect"):
+                    self.db_client.disconnect()
+                logger.info("Database client closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing database client: {e}")
+                
+        logger.info("Data fetcher connections closed with thread cleanup")

@@ -1,317 +1,242 @@
-"""
-Performance logging utility for LCW data fetcher.
-
-This module provides tools for tracking operation timing and identifying
-performance bottlenecks in the data fetching pipeline.
-"""
-
-import functools
 import logging
-import time
+import psutil
 import threading
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+import time
+from typing import Any, Dict, Optional
 
-from loguru import logger
-
-# Import metrics functions
+# Import Prometheus metrics if available  
+METRICS_AVAILABLE = True
 try:
-    from .metrics import record_operation_duration, update_system_metrics
-
-    METRICS_AVAILABLE = True
+    from prometheus_client import Counter, Histogram, Summary
+    
+    # Prometheus metrics
+    FETCH_DURATION = Summary("lcw_fetch_duration_seconds", "Time spent on data fetching operations", ["operation"])
+    FETCH_COUNTER = Counter("lcw_fetch_total", "Total number of fetch operations", ["operation", "status"])
+    RESOURCE_USAGE = Histogram("lcw_resource_usage", "System resource usage", ["resource_type"])
 except ImportError:
     METRICS_AVAILABLE = False
 
-    def record_operation_duration(*args, **kwargs):
-        pass
-
-    def update_system_metrics(*args, **kwargs):
-        pass
+from loguru import logger
 
 
-@dataclass
-class OperationMetrics:
-    """Container for operation performance metrics"""
-
-    operation_name: str
-    start_time: float
-    end_time: Optional[float] = None
-    duration: Optional[float] = None
-    success: bool = True
-    error_message: Optional[str] = None
-    context: Dict[str, Any] = field(default_factory=dict)
-
-    def complete(self, success: bool = True, error_message: Optional[str] = None):
-        """Mark the operation as completed"""
+class PerformanceContext:
+    """Context manager for tracking performance of code blocks"""
+    
+    def __init__(self, operation_name: str, metadata: Optional[Dict[str, Any]] = None):
+        self.operation_name = operation_name
+        self.metadata = metadata or {}
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        
+    def __enter__(self):
+        self.start_time = time.time()
+        logger.debug(f"⏱️ Starting {self.operation_name}")
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.end_time = time.time()
-        self.duration = self.end_time - self.start_time
-        self.success = success
-        self.error_message = error_message
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert metrics to dictionary for logging"""
-        return {
-            "operation": self.operation_name,
-            "duration_seconds": round(self.duration or 0, 3),
-            "success": self.success,
-            "start_time": datetime.fromtimestamp(self.start_time).isoformat(),
-            "end_time": (
-                datetime.fromtimestamp(self.end_time).isoformat()
-                if self.end_time
-                else None
-            ),
-            "error": self.error_message,
-            "context": self.context,
-        }
+        duration = self.end_time - self.start_time
+        
+        # Log performance
+        _log_performance(self.operation_name, duration, self.metadata, exc_type is None)
+        
+        return False  # Don't suppress exceptions
 
 
-class PerformanceTracker:
-    """Tracks and logs performance metrics for operations"""
-
-    def __init__(self):
-        self.metrics_history: list[OperationMetrics] = []
-        self.active_operations: Dict[str, OperationMetrics] = {}
-
-        # Performance thresholds (configurable)
-        self.warning_threshold = 30.0  # seconds
-        self.critical_threshold = 60.0  # seconds
-
-    def start_operation(
-        self, operation_name: str, context: Optional[Dict[str, Any]] = None
-    ) -> OperationMetrics:
-        """Start tracking a new operation"""
-        metrics = OperationMetrics(
-            operation_name=operation_name, start_time=time.time(), context=context or {}
-        )
-
-        self.active_operations[operation_name] = metrics
-        logger.debug(f"Started tracking: {operation_name}")
-
-        return metrics
-
-    def complete_operation(
-        self,
-        operation_name: str,
-        success: bool = True,
-        error_message: Optional[str] = None,
-    ) -> Optional[OperationMetrics]:
-        """Complete an operation and log its performance"""
-        metrics = self.active_operations.pop(operation_name, None)
-        if not metrics:
-            logger.warning(
-                f"Attempted to complete untracked operation: {operation_name}"
-            )
-            return None
-
-        metrics.complete(success=success, error_message=error_message)
-        self.metrics_history.append(metrics)
-
-        # Log based on performance thresholds
-        self._log_performance(metrics)
-
-        # Record to Prometheus metrics if available
-        if METRICS_AVAILABLE:
-            record_operation_duration(
-                operation_name, metrics.duration or 0, metrics.success
-            )
-
-        return metrics
-
-    def _log_performance(self, metrics: OperationMetrics):
-        """Log performance metrics based on duration thresholds"""
-        duration = metrics.duration or 0
-        operation_name = metrics.operation_name
-
-        if not metrics.success:
-            logger.error(
-                f"❌ OPERATION FAILED: {operation_name} after {duration:.2f}s - {metrics.error_message}"
-            )
-        elif duration >= self.critical_threshold:
-            logger.critical(
-                f"🚨 CRITICAL SLOW OPERATION: {operation_name} took {duration:.2f}s (threshold: {self.critical_threshold}s)"
-            )
-        elif duration >= self.warning_threshold:
-            logger.warning(
-                f"⚠️ SLOW OPERATION: {operation_name} took {duration:.2f}s (threshold: {self.warning_threshold}s)"
-            )
-        else:
-            logger.info(f"✅ {operation_name} completed in {duration:.2f}s")
-
-        # Always log detailed metrics at debug level
-        logger.debug(f"Operation metrics: {metrics.to_dict()}")
-
-    def get_recent_stats(
-        self, operation_name: Optional[str] = None, limit: int = 100
-    ) -> Dict[str, Any]:
-        """Get recent performance statistics"""
-        recent_metrics = self.metrics_history[-limit:]
-
-        if operation_name:
-            recent_metrics = [
-                m for m in recent_metrics if m.operation_name == operation_name
-            ]
-
-        if not recent_metrics:
-            return {"error": "No metrics available"}
-
-        durations = [m.duration for m in recent_metrics if m.duration is not None]
-        successes = [m.success for m in recent_metrics]
-
-        if not durations:
-            return {"error": "No duration data available"}
-
-        return {
-            "operation": operation_name or "all_operations",
-            "count": len(recent_metrics),
-            "success_rate": sum(successes) / len(successes) * 100,
-            "avg_duration": sum(durations) / len(durations),
-            "min_duration": min(durations),
-            "max_duration": max(durations),
-            "slow_operations": len(
-                [d for d in durations if d >= self.warning_threshold]
-            ),
-            "critical_operations": len(
-                [d for d in durations if d >= self.critical_threshold]
-            ),
-        }
-
-
-# Global performance tracker instance
-_performance_tracker = PerformanceTracker()
-
-
-@contextmanager
-def track_performance(operation_name: str, context: Optional[Dict[str, Any]] = None):
-    """Context manager for tracking operation performance"""
-    metrics = _performance_tracker.start_operation(operation_name, context)
-
-    try:
-        yield metrics
-        _performance_tracker.complete_operation(operation_name, success=True)
-    except Exception as e:
-        _performance_tracker.complete_operation(
-            operation_name, success=False, error_message=str(e)
-        )
-        raise
-
-
-def performance_monitor(operation_name: Optional[str] = None):
-    """Decorator for monitoring function performance"""
-
-    def decorator(func: Callable) -> Callable:
-        nonlocal operation_name
-        if operation_name is None:
-            operation_name = f"{func.__module__}.{func.__name__}"
-
-        @functools.wraps(func)
+def track_performance(operation_name: str, metadata: Optional[Dict[str, Any]] = None):
+    """Decorator for tracking performance of functions"""
+    def decorator(func):
         def wrapper(*args, **kwargs):
-            with track_performance(operation_name):
+            with PerformanceContext(operation_name, metadata):
                 return func(*args, **kwargs)
-
         return wrapper
-
     return decorator
 
 
-def get_performance_stats(
-    operation_name: Optional[str] = None, limit: int = 100
-) -> Dict[str, Any]:
-    """Get performance statistics from the global tracker"""
-    return _performance_tracker.get_recent_stats(operation_name, limit)
+def _log_performance(operation_name: str, duration: float, metadata: Dict[str, Any], success: bool) -> None:
+    """Internal function to log performance metrics"""
+    
+    # Format duration appropriately
+    if duration < 1:
+        duration_str = f"{duration:.2f}s"
+    elif duration < 60:
+        duration_str = f"{duration:.1f}s"
+    else:
+        minutes = int(duration // 60)
+        seconds = duration % 60
+        duration_str = f"{minutes}m{seconds:.1f}s"
+    
+    # Log with appropriate level based on duration and success
+    if not success:
+        logger.error(f"❌ {operation_name} failed after {duration_str}")
+    elif duration > 30:
+        logger.warning(f"🐌 {operation_name} completed in {duration_str} (slow)")
+    elif duration > 10:
+        logger.info(f"⏳ {operation_name} completed in {duration_str}")
+    else:
+        logger.info(f"✅ {operation_name} completed in {duration_str}")
+    
+    # Add metadata if provided
+    if metadata:
+        logger.debug(f"📋 {operation_name} metadata: {metadata}")
+    
+    # Record to Prometheus if available
+    if METRICS_AVAILABLE:
+        FETCH_DURATION.labels(operation=operation_name).observe(duration)
+        FETCH_COUNTER.labels(operation=operation_name, status='success' if success else 'failure').inc()
 
 
-def log_system_resources():
-    """Log current system resource usage"""
+def get_system_stats() -> Dict[str, Any]:
+    """Get current system resource statistics"""
     try:
-        import psutil
-
         # CPU usage
-        cpu_percent = psutil.cpu_percent(interval=1)
-
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        
         # Memory usage
         memory = psutil.virtual_memory()
         memory_percent = memory.percent
         memory_available_gb = memory.available / (1024**3)
-
-        # Disk usage (for current directory)
-        disk = psutil.disk_usage(".")
-        disk_percent = (disk.used / disk.total) * 100
-
-
+        
+        # Disk usage for current directory
+        disk = psutil.disk_usage('/')
+        disk_percent = disk.percent
+        
         # Thread count
         active_threads = threading.active_count()
+        
+        # Try to get more accurate process thread count
         try:
             import os
+            # Get actual process thread count from /proc
             process_threads = len(os.listdir(f"/proc/{os.getpid()}/task"))
         except:
             process_threads = active_threads
-        logger.info(
-            f"📊 System Resources - "
-            f"CPU: {cpu_percent}% | "
-            f"Memory: {memory_percent}% ({memory_available_gb:.1f}GB available) | "
-            f"Disk: {disk_percent:.1f}% | Threads: {active_threads}/{process_threads}"
-        )
-
-        # Record to Prometheus metrics if available
-        if METRICS_AVAILABLE:
-            update_system_metrics(cpu_percent, memory_percent, disk_percent)
-
-    except ImportError:
-        logger.warning(
-            "psutil not available - install with 'pip install psutil' for system monitoring"
-        )
+            
+        return {
+            'cpu_percent': cpu_percent,
+            'memory_percent': memory_percent,
+            'memory_available_gb': memory_available_gb,
+            'disk_percent': disk_percent,
+            'active_threads': active_threads,
+            'process_threads': process_threads
+        }
     except Exception as e:
-        logger.error(f"Error logging system resources: {e}")
+        logger.warning(f"Failed to get system stats: {e}")
+        return {}
 
 
-class PerformanceAlert:
-    """Handles performance alerting"""
+def log_system_resources() -> None:
+    """Log current system resource usage with thread monitoring"""
+    stats = get_system_stats()
+    
+    if not stats:
+        logger.warning("Unable to retrieve system resource information")
+        return
+    
+    cpu_percent = stats['cpu_percent']
+    memory_percent = stats['memory_percent']
+    memory_available_gb = stats['memory_available_gb']
+    disk_percent = stats['disk_percent']
+    active_threads = stats['active_threads']
+    process_threads = stats['process_threads']
+    
+    # Log thread information with more detail
+    logger.info(
+        f"📊 System Resources - "
+        f"CPU: {cpu_percent}% | "
+        f"Memory: {memory_percent}% ({memory_available_gb:.1f}GB available) | "
+        f"Disk: {disk_percent:.1f}% | Threads: {active_threads}/{process_threads}"
+    )
+    
+    # Alert on high thread count (potential leak detection)
+    if process_threads > 100:
+        logger.warning(f"⚠️ High thread count detected: {process_threads} threads (potential leak!)")
+    elif process_threads > 50:
+        logger.info(f"📈 Elevated thread count: {process_threads} threads")
+    elif process_threads <= 30:
+        logger.debug(f"✅ Normal thread count: {process_threads} threads")
 
-    def __init__(
-        self,
-        warning_threshold: float = 30.0,
-        critical_threshold: float = 60.0,
-        alert_cooldown: int = 300,
-    ):  # 5 minutes
-        self.warning_threshold = warning_threshold
-        self.critical_threshold = critical_threshold
-        self.alert_cooldown = alert_cooldown
-        self.last_alert_time = {}
+    # Record to Prometheus metrics if available
+    if METRICS_AVAILABLE:
+        RESOURCE_USAGE.labels(resource_type='cpu').observe(cpu_percent)
+        RESOURCE_USAGE.labels(resource_type='memory').observe(memory_percent)
+        RESOURCE_USAGE.labels(resource_type='disk').observe(disk_percent)
+        RESOURCE_USAGE.labels(resource_type='threads').observe(process_threads)
 
-    def check_and_alert(self, metrics: OperationMetrics):
-        """Check if an alert should be sent for the given metrics"""
-        duration = metrics.duration or 0
-        operation = metrics.operation_name
-        current_time = time.time()
 
-        # Check cooldown
-        last_alert = self.last_alert_time.get(operation, 0)
-        if current_time - last_alert < self.alert_cooldown:
-            return
+def monitor_resource_usage(operation_name: str):
+    """Decorator to monitor resource usage before and after operation"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            logger.debug(f"🔍 Resource monitoring for {operation_name}")
+            
+            # Get stats before
+            stats_before = get_system_stats()
+            
+            try:
+                result = func(*args, **kwargs)
+                
+                # Get stats after
+                stats_after = get_system_stats()
+                
+                # Log resource changes if significant
+                if stats_before and stats_after:
+                    thread_diff = stats_after['process_threads'] - stats_before['process_threads']
+                    if abs(thread_diff) > 2:  # More than 2 threads changed
+                        if thread_diff > 0:
+                            logger.warning(f"🔺 {operation_name} increased threads by {thread_diff} "
+                                         f"({stats_before['process_threads']} → {stats_after['process_threads']})")
+                        else:
+                            logger.info(f"🔻 {operation_name} decreased threads by {abs(thread_diff)} "
+                                       f"({stats_before['process_threads']} → {stats_after['process_threads']})")
+                
+                return result
+            except Exception as e:
+                # Log final stats on error
+                stats_after = get_system_stats()
+                if stats_before and stats_after:
+                    thread_diff = stats_after['process_threads'] - stats_before['process_threads']
+                    if thread_diff > 0:
+                        logger.error(f"💥 {operation_name} failed and leaked {thread_diff} threads")
+                raise
+                
+        return wrapper
+    return decorator
 
-        if duration >= self.critical_threshold:
-            self._send_alert(
-                level="CRITICAL",
-                operation=operation,
-                duration=duration,
-                message=f"Operation {operation} took {duration:.2f}s (>{self.critical_threshold}s)",
-            )
-            self.last_alert_time[operation] = current_time
 
-        elif duration >= self.warning_threshold:
-            self._send_alert(
-                level="WARNING",
-                operation=operation,
-                duration=duration,
-                message=f"Operation {operation} took {duration:.2f}s (>{self.warning_threshold}s)",
-            )
-            self.last_alert_time[operation] = current_time
+def alert_on_resource_threshold(max_threads: int = 100, max_memory_percent: float = 90.0):
+    """Check resource thresholds and alert if exceeded"""
+    stats = get_system_stats()
+    
+    if not stats:
+        return
+    
+    alerts = []
+    
+    if stats['process_threads'] > max_threads:
+        alerts.append(f"Thread count ({stats['process_threads']}) exceeds threshold ({max_threads})")
+    
+    if stats['memory_percent'] > max_memory_percent:
+        alerts.append(f"Memory usage ({stats['memory_percent']:.1f}%) exceeds threshold ({max_memory_percent}%)")
+    
+    if alerts:
+        logger.warning("🚨 Resource threshold alerts:")
+        for alert in alerts:
+            logger.warning(f"  - {alert}")
 
-    def _send_alert(self, level: str, operation: str, duration: float, message: str):
-        """Send performance alert (extend this for email/Slack notifications)"""
-        logger.warning(f"🚨 PERFORMANCE ALERT [{level}]: {message}")
 
-        # TODO: Extend this to send email/Slack notifications
-        # For now, just log the alert
+# Convenience function for backward compatibility
+def track_performance_simple(operation_name: str, duration: float, metadata: Dict[str, Any] = None, success: bool = True):
+    """Simple function to track performance - for backward compatibility"""
+    _log_performance(operation_name, duration, metadata or {}, success)
+
+
+# Make commonly used items available at module level
+__all__ = [
+    'track_performance',
+    'PerformanceContext', 
+    'log_system_resources',
+    'get_system_stats',
+    'monitor_resource_usage',
+    'alert_on_resource_threshold'
+]

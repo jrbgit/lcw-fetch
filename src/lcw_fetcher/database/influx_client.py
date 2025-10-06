@@ -10,7 +10,7 @@ from influxdb_client.domain.write_precision import WritePrecision
 from loguru import logger
 
 from ..models import Coin, Exchange, Market
-from ..utils.performance_logger import track_performance
+from ..utils.performance_logger import track_performance, PerformanceContext
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class InfluxDBClient:
 
     def connect(self) -> None:
         """Establish connection to InfluxDB with optimized settings"""
-        with track_performance("influxdb_connect"):
+        with PerformanceContext("influxdb_connect"):
             try:
                 self._client = BaseInfluxDBClient(
                     url=self.url,
@@ -79,20 +79,46 @@ class InfluxDBClient:
                 raise
 
     def disconnect(self) -> None:
-        """Close connection to InfluxDB"""
+        """Close connection to InfluxDB with proper thread cleanup"""
+        # CRITICAL FIX: Close WriteAPI first to stop background threads
+        if self._write_api:
+            try:
+                logger.info("Closing InfluxDB WriteAPI to stop background threads...")
+                self._write_api.close()  # This stops background threads
+                logger.info("WriteAPI closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing WriteAPI: {e}")
+            finally:
+                self._write_api = None
+        
+        # Close query API
+        if self._query_api:
+            try:
+                # Query API doesn't have explicit close, but clear reference
+                self._query_api = None
+            except Exception as e:
+                logger.warning(f"Error clearing query API: {e}")
+        
+        # Then close the main client
         if self._client:
-            self._client.close()
-            self._client = None
-            self._write_api = None
-            self._query_api = None
-            logger.info("Disconnected from InfluxDB")
+            try:
+                logger.info("Closing InfluxDB client connection...")
+                self._client.close()
+                logger.info("InfluxDB client closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing InfluxDB client: {e}")
+            finally:
+                self._client = None
+                
+        self._connection_pool_initialized = False
+        logger.info("Disconnected from InfluxDB with thread cleanup")
 
     def write_coins(self, coins: List[Coin]) -> None:
         """Write coin data to InfluxDB with performance tracking"""
         if not self._write_api:
             raise RuntimeError("InfluxDB client not connected")
 
-        with track_performance("influxdb_write_coins", {"coin_count": len(coins)}):
+        with PerformanceContext("influxdb_write_coins", {"coin_count": len(coins)}):
             try:
                 points = [coin.to_influx_point() for coin in coins]
 
@@ -165,7 +191,7 @@ class InfluxDBClient:
         if not self._query_api:
             raise RuntimeError("InfluxDB client not connected")
 
-        with track_performance("influxdb_query_latest_coins", {"limit": limit}):
+        with PerformanceContext("influxdb_query_latest_coins", {"limit": limit}):
             flux_query = f"""
                 from(bucket: "{self.bucket}")
                 |> range(start: -1d)
