@@ -288,6 +288,11 @@ class DataScheduler:
             logger.info(f"  - {job.name} ({job.id}): {job.trigger}")
 
         logger.info("Scheduler started. Press Ctrl+C to stop.")
+        # Start metrics server if enabled
+        if self.metrics_collector:
+            self.metrics_collector.start_metrics_server()
+            logger.info(f"Metrics server started on port {self.config.metrics_port}")
+
         
         try:
             self.scheduler.start()
